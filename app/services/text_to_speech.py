@@ -8,11 +8,11 @@ spitch_client = AsyncSpitch()
 # Only "yo"/"sade" and "en"/"lina" appear in Spitch's own docs examples.
 # Fill in the rest from the docs voice list; leave as None if unsure.
 VOICES = {
-    "yoruba":  ("yo", "sade"),
-    "english": ("en", "lina"),
-    "hausa":   None,   # e.g. ("ha", "<voice from docs>")
-    "igbo":    None,   # e.g. ("ig", "<voice from docs>")
-    "pidgin":  None,   # Cameroonian Pidgin: use the code and voice from Spitch's docs
+    "yoruba":  ("yo",  "sade"),
+    "english": ("en",  "lina"),
+    "hausa":   ("ha",  "amina"),
+    "igbo":    ("ig",  "ngozi"),
+    "pidgin":  ("pcm", "boma"),
 }
 
 async def text_to_speech(text: str, language: str) -> bytes | None:

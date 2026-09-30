@@ -22,7 +22,7 @@ from app.schemas.memory import storage, User
 # from app.onboarding.state_machine import OnboardingStateMachine
 from app.services.whatsapp_onboarding import WhatsAppService
 from app.onboarding.messages import create_language_message, create_role_message
-from app.onboarding.messages import LANGUAGES
+from app.onboarding.messages import LANGUAGES, ROLES
 
 import os
 from dotenv import load_dotenv
@@ -158,7 +158,7 @@ async def receive_webhook(
             selected_role_id = button_reply.get("id")
 
             if selected_role_id:
-                user.role = selected_role_id
+                user.role = ROLES.get(selected_role_id)
 
                 # Move them to the next state.
                 user.state = "onboarding_complete"
@@ -175,10 +175,20 @@ async def receive_webhook(
                 message={
                     "type": "text",
                     "text": {
-                        "body": f"You selected role {user.role}. ask any question"
+                        "body": f"You selected role {user.role}. ask any question\n"
                     }
                 },
             )
+             # For now, just confirm it worked.
+            await whatsapp.send_message(
+                            recipient=phone,
+                            message={
+                                "type": "text",
+                                "text": {
+                                    "body": f"Do you have any questions to ask about your farmland?\n"
+                                }
+                            },
+                        )
 
             return {"status": "received"}
 

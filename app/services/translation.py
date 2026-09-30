@@ -83,6 +83,7 @@ async def translate_to_english(text: str) -> dict:
         return fallback
 
 
+
 async def translate_for_speech(text: str, language: str) -> tuple[str, str | None]:
     """
     Translate an English farmer reply into the farmer's language.
@@ -94,15 +95,17 @@ async def translate_for_speech(text: str, language: str) -> tuple[str, str | Non
     - Language has no Spitch code configured (e.g. pidgin for now): returns
       the translation with None, so the caller can send it as text instead.
     """
+    TRANSLATE_PROMPT = (
+    "Translate the user's message into {language}. "
+    "Output only the translation, with no explanations, notes, or quotation marks."
+)
+
     language = (language or "").strip().lower()
 
     if language not in LANGUAGE_NAMES:
         return text, SPITCH_LANG_CODES["english"]
 
-    system_prompt = TTS_PROMPT_TEMPLATE.format(
-        language=LANGUAGE_NAMES[language],
-        extra=YORUBA_EXTRA if language == "yoruba" else "",
-    )
+    system_prompt = TRANSLATE_PROMPT.format(language=LANGUAGE_NAMES[language])
 
     try:
         interaction = await client.aio.interactions.create(
@@ -117,4 +120,3 @@ async def translate_for_speech(text: str, language: str) -> tuple[str, str | Non
     except Exception as e:
         print(f"Error translating to {language}: {e}")
         return text, SPITCH_LANG_CODES["english"]
-
