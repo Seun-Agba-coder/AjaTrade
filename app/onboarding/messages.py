@@ -1,9 +1,13 @@
+from app.strings import t
+
+# Maps WhatsApp list IDs to the language codes used across the app
+# (see app/strings.py and the data model in AGENTS.md).
 LANGUAGES = {
-    "lang_ha": "hausa",
-    "lang_yo": "yoruba",
-    "lang_ig": "igbo",
-    "lang_pcm": "nigerian pidgin",
-    "lang_en": "english",
+    "lang_ha": "ha",
+    "lang_yo": "yo",
+    "lang_ig": "ig",
+    "lang_pcm": "pcm",
+    "lang_en": "en",
 }
 
 
@@ -73,14 +77,10 @@ def create_language_message():
         "interactive": {
             "type": "list",
             "body": {
-                "text": (
-                    "Welcome to AjaTrade! 👋\n\n"
-                    "Please choose your preferred language "
-                    "to continue."
-                )
+                "text": t("welcome_body", "en")
             },
             "action": {
-                "button": "Choose language",
+                "button": t("choose_language_button", "en"),
                 "sections": [
                     {
                         "title": "Languages",
@@ -113,13 +113,13 @@ def create_language_message():
     }
 
 
-def create_role_message():
+def create_role_message(language: str = "en"):
     return {
         "type": "interactive",
         "interactive": {
             "type": "button",
             "body": {
-                "text": "What best describes you?"
+                "text": t("role_question", language)
             },
             "action": {
                 "buttons": [
@@ -127,21 +127,21 @@ def create_role_message():
                         "type": "reply",
                         "reply": {
                             "id": "role_farmer",
-                            "title": "Farmer"
+                            "title": t("role_button_farmer", language)
                         }
                     },
                     {
                         "type": "reply",
                         "reply": {
                             "id": "role_trader",
-                            "title": "Trader"
+                            "title": t("role_button_trader", language)
                         }
                     },
                     {
                         "type": "reply",
                         "reply": {
                             "id": "role_manufacturer",
-                            "title": "Manufacturer"
+                            "title": t("role_button_manufacturer", language)
                         }
                     }
                 ]
