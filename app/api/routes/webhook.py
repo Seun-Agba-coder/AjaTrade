@@ -22,7 +22,8 @@ from app.schemas.memory import storage, User
 # from app.onboarding.state_machine import OnboardingStateMachine
 from app.services.whatsapp_onboarding import WhatsAppService
 from app.onboarding.messages import create_language_message, create_role_message
-from app.onboarding.messages import LANGUAGES
+from app.onboarding.messages import LANGUAGES, ROLES
+from app.strings import LANGUAGE_NAMES, t
 
 import os
 from dotenv import load_dotenv
@@ -118,34 +119,39 @@ async def receive_webhook(
 
             language = LANGUAGES.get(selected_language_id)
 
-            if language:
+            if language is None:
+                # Unrecognised choice: show the language options again.
+                await whatsapp.send_message(
+                    recipient=phone,
+                    message=create_language_message(),
+                )
+            else:
                 user.language = language
 
                 # Move them to the next state.
                 user.state = "awaiting_consent"
-
                 storage.save_user(user)
 
-                print(
-                f"User {user.phone} selected {user.language}"
-            )
-            response = create_role_message()
+                print(f"User {user.phone} selected {user.language}")
 
-            # For now, just confirm it worked.
-            await whatsapp.send_message(
-                recipient=phone,
-                message={
-                    "type": "text",
-                    "text": {
-                        "body": f"You selected {user.language}."
-                    }
-                },
-            )
-            # For now, just confirm it worked.
-            await whatsapp.send_message(
-                recipient=phone,
-                message=response,
-            )
+                # Confirm in the chosen language, then ask for their role.
+                await whatsapp.send_message(
+                    recipient=phone,
+                    message={
+                        "type": "text",
+                        "text": {
+                            "body": t(
+                                "language_selected",
+                                user.language,
+                                language=LANGUAGE_NAMES[user.language],
+                            )
+                        },
+                    },
+                )
+                await whatsapp.send_message(
+                    recipient=phone,
+                    message=create_role_message(user.language),
+                )
 
             return {"status": "received"}
     elif  storage.get_user(phone).role == None: 
@@ -155,30 +161,33 @@ async def receive_webhook(
         user = storage.get_user(phone)
 
         if button_reply:
-            selected_role_id = button_reply.get("id")
+            # Map the button ID to a real role so the raw ID is never shown.
+            role = ROLES.get(button_reply.get("id"))
 
-            if selected_role_id:
-                user.role = selected_role_id
+            if role:
+                user.role = role
 
                 # Move them to the next state.
                 user.state = "onboarding_complete"
 
                 storage.save_user(user)
 
-                print(
-                f"User {user.phone} selected role {user.role}"
-            )
+                print(f"User {user.phone} selected role {user.role}")
 
-            # For now, just confirm it worked.
-            await whatsapp.send_message(
-                recipient=phone,
-                message={
-                    "type": "text",
-                    "text": {
-                        "body": f"You selected role {user.role}. ask any question"
-                    }
-                },
-            )
+                # Confirm with the friendly role name, in their language.
+                await whatsapp.send_message(
+                    recipient=phone,
+                    message={
+                        "type": "text",
+                        "text": {
+                            "body": t(
+                                "role_selected",
+                                user.language,
+                                role=t(f"role_name_{role}", user.language),
+                            )
+                        },
+                    },
+                )
 
             return {"status": "received"}
 
