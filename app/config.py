@@ -15,6 +15,7 @@ class Settings:
 
     whatsapp_verify_token: str = ""
     whatsapp_app_secret: str = ""  # from the Meta app dashboard
+    whatsapp_api_version: str = "v21.0"
 
 
 @lru_cache
@@ -23,4 +24,5 @@ def get_settings() -> Settings:
     return Settings(
         whatsapp_verify_token=os.getenv("WHATSAPP_VERIFY_TOKEN", ""),
         whatsapp_app_secret=os.getenv("WHATSAPP_APP_SECRET", ""),
+        whatsapp_api_version=os.getenv("WHATSAPP_API_VERSION", "v21.0"),
     )

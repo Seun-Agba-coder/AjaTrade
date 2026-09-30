@@ -15,7 +15,10 @@ from fastapi.responses import PlainTextResponse
 from app.config import Settings, get_settings
 from app.core.security import verify_signature
 from app.schemas.webhook import WebhookPayload
-from app.services.messages import handle_message
+from app.services.whatsapp.media import fetch_voice_note
+from app.services.whatsapp.messages import handle_message
+from app.services.speech_to_text import transcribe_voice_note
+from app.services.translation import translate_to_english
 
 logger = logging.getLogger("webhook")
 
@@ -44,6 +47,7 @@ async def receive_webhook(
 ) -> dict[str, str]:
     """Accept a webhook delivery, then process it out-of-band."""
     raw_body = await request.body()
+    print("Received webhook payload:", raw_body.decode("utf-8"))
 
     if not verify_signature(
         raw_body,
@@ -62,6 +66,24 @@ async def receive_webhook(
             for message in value.messages:
                 name = contacts.get(message.from_)
                 background_tasks.add_task(handle_message, message, name)
+
+                if message.type == "audio" and message.audio is not None:
+                    print("Message type is audio, fetching voice note...")
+                    audio_bytes, mime_type = await fetch_voice_note(message.audio.id)
+                    logger.info(
+                        "Fetched voice note media_id=%s from %s: %d bytes (%s)",
+                        message.audio.id,
+                        message.from_,
+                        len(audio_bytes),
+                        mime_type,
+                    )
+                    transcription_text = await transcribe_voice_note(audio_bytes, mime_type)
+                    logger.info("Transcription: %s", transcription_text)
+
+                    translated_text = await translate_to_english(transcription_text)
+
+                    
+                    logger.info("Translated text: %s", translated_text)
 
             # delivery/read receipts arrive under value["statuses"]; ignored here
 
