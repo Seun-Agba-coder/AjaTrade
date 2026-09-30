@@ -52,3 +52,4 @@ class Entry(BaseModel):
 class WebhookPayload(BaseModel):
     object: str | None = None
     entry: list[Entry] = Field(default_factory=list)
+    
