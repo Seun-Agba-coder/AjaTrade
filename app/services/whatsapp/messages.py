@@ -52,8 +52,14 @@ async def handle_message(message: Message, contact_name: str | None) -> None:
             len(image_bytes),
             mime_type,
         )
+        logger.info("Farmer's caption: %s", message.image.caption)
+        translated_text = None
+        if (message.image.caption):
+            result = await translate_to_english(message.image.caption)
+            translated_text = result.get("english")
+        
 
-        diagnosis = diagnose(image_bytes, mime_type)
+        diagnosis = diagnose(image_bytes, mime_type, farmer_text=translated_text)
         logger.info("Diagnosis for media_id=%s: %s", message.image.id, diagnosis)
         translated_farmer_message, spitch_lang_code = await translate_for_speech(diagnosis["farmer_message"], language_selected)
         logger.info("Translated farmer message: %s (Spitch code: %s)", translated_farmer_message, spitch_lang_code)

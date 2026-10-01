@@ -1,20 +1,21 @@
 import os
-import asyncio
-from dotenv import load_dotenv
-from google import genai
-from google.genai import types
 import json
+from dotenv import load_dotenv
+from groq import AsyncGroq
 
 # Load our environment variables
 load_dotenv()
 
-# The client automatically detects GEMINI_API_KEY from the environment,
-# but keeping it explicit like we had it is perfectly fine.
-client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+# The client reads GROQ_API_KEY from the environment; explicit for clarity.
+client = AsyncGroq(api_key=os.getenv("GROQ_API_KEY"))
 
-# If 3.1-flash-lite throws a "model not found" error, we can safely 
-# fall back to gemini-2.5-flash or gemini-2.5-flash-lite.
-MODEL = "gemini-3.8-flash"
+# "openai/gpt-oss-120b" is the stronger model (better for Yoruba/Hausa/Igbo/Pidgin).
+# "openai/gpt-oss-20b" is faster and cheaper. Switch here, or set GROQ_MODEL in .env.
+# MODEL = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
+MODEL = "openai/gpt-oss-20b"
+
+# gpt-oss models reason before answering. "low" keeps latency down for translation.
+REASONING_EFFORT = "low"
 
 AUTO = "auto"   # sentinel: means "don't send a language, let Spitch detect"
 
@@ -48,6 +49,11 @@ YORUBA_EXTRA = (
     "and accent marks) because the voice depends on them. "
 )
 
+TRANSLATE_PROMPT = (
+    "Translate the user's message into {language}. "
+    "Output only the translation, with no explanations, notes, or quotation marks."
+)
+
 SYSTEM_PROMPT = (
     "Translate the user's text to English and identify its source language. "
     "The text may be Yoruba, Hausa, Igbo, Nigerian Pidgin, English, or a mix. "
@@ -61,27 +67,39 @@ SYSTEM_PROMPT = (
     '"is_mixed": true or false, '
     '"english": "the translation", "unclear": true or false}'
 )
+
+VALID_LANGUAGES = ("yoruba", "hausa", "igbo", "pidgin", "english", "unknown")
+
+
+async def _chat(system_prompt: str, user_text: str) -> str:
+    """Single Groq chat call. Returns the model's text reply."""
+    completion = await client.chat.completions.create(
+        model=MODEL,
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_text},
+        ],
+        temperature=0.2,
+        reasoning_effort=REASONING_EFFORT,
+    )
+    return (completion.choices[0].message.content or "").strip()
+
+
 async def translate_to_english(text: str) -> dict:
     fallback = {"language": "unknown", "is_mixed": False, "english": text, "unclear": True}
     try:
-        interaction = await client.aio.interactions.create(
-            model=MODEL,
-            input=text,
-            system_instruction=SYSTEM_PROMPT,
-        )
-        raw = interaction.output_text.strip()
+        raw = await _chat(SYSTEM_PROMPT, text)
         raw = raw[raw.find("{"): raw.rfind("}") + 1]
         print(raw)
         result = json.loads(raw)
         if "language" not in result or "english" not in result:
             return fallback
-        if result["language"] not in ("yoruba", "hausa", "igbo", "pidgin", "english", "unknown"):
+        if result["language"] not in VALID_LANGUAGES:
             result["language"] = "unknown"   # guards against the model returning 'mixed' anyway
         return result
     except Exception as e:
         print(f"Error during translation: {e}")
         return fallback
-
 
 
 async def translate_for_speech(text: str, language: str) -> tuple[str, str | None]:
@@ -95,11 +113,6 @@ async def translate_for_speech(text: str, language: str) -> tuple[str, str | Non
     - Language has no Spitch code configured (e.g. pidgin for now): returns
       the translation with None, so the caller can send it as text instead.
     """
-    TRANSLATE_PROMPT = (
-    "Translate the user's message into {language}. "
-    "Output only the translation, with no explanations, notes, or quotation marks."
-)
-
     language = (language or "").strip().lower()
 
     if language not in LANGUAGE_NAMES:
@@ -108,12 +121,7 @@ async def translate_for_speech(text: str, language: str) -> tuple[str, str | Non
     system_prompt = TRANSLATE_PROMPT.format(language=LANGUAGE_NAMES[language])
 
     try:
-        interaction = await client.aio.interactions.create(
-            model=MODEL,
-            input=text,
-            system_instruction=system_prompt,
-        )
-        translated = interaction.output_text.strip().strip('"').strip()
+        translated = (await _chat(system_prompt, text)).strip('"').strip()
         if not translated:
             raise ValueError("empty translation")
         return translated, SPITCH_LANG_CODES[language]
