@@ -17,12 +17,13 @@ from app.config import Settings, get_settings
 from app.core.security import verify_signature
 from app.schemas.webhook import WebhookPayload
 from app.services.whatsapp.messages import handle_message
+from app.services.translation import translate_for_speech
 
 from app.schemas.memory import storage, User
 # from app.onboarding.state_machine import OnboardingStateMachine
 from app.services.whatsapp_onboarding import WhatsAppService
 from app.onboarding.messages import create_language_message, create_role_message
-from app.onboarding.messages import LANGUAGES
+from app.onboarding.messages import LANGUAGES, ROLES
 
 import os
 from dotenv import load_dotenv
@@ -99,7 +100,7 @@ async def receive_webhook(
         storage.save_user(user)
 
         # Send language selection.
-        response = create_language_message()
+        response = create_language_message(name=payload_json["entry"][0]["changes"][0]["value"]["contacts"][0]["profile"]["name"])
 
         await whatsapp.send_message(
         recipient=phone,
@@ -117,7 +118,7 @@ async def receive_webhook(
             selected_language_id = list_reply.get("id")
 
             language = LANGUAGES.get(selected_language_id)
-
+            print("language selected", language)
             if language:
                 user.language = language
 
@@ -129,15 +130,18 @@ async def receive_webhook(
                 print(
                 f"User {user.phone} selected {user.language}"
             )
-            response = create_role_message()
-
+            response = create_role_message(language=user.language)
+            translated_text, spitch_language_code = await translate_for_speech(
+                text=f"You selected {user.language}.",
+                language=user.language,
+            )
             # For now, just confirm it worked.
             await whatsapp.send_message(
                 recipient=phone,
                 message={
                     "type": "text",
                     "text": {
-                        "body": f"You selected {user.language}."
+                        "body": translated_text
                     }
                 },
             )
@@ -158,7 +162,7 @@ async def receive_webhook(
             selected_role_id = button_reply.get("id")
 
             if selected_role_id:
-                user.role = selected_role_id
+                user.role = ROLES.get(selected_role_id)
 
                 # Move them to the next state.
                 user.state = "onboarding_complete"
@@ -168,6 +172,10 @@ async def receive_webhook(
                 print(
                 f"User {user.phone} selected role {user.role}"
             )
+            translated_text, spitch_language_code = await translate_for_speech(
+                            text=f"You selected role as {user.role}. Ask any question?\n",
+                            language=user.language,
+                        )
 
             # For now, just confirm it worked.
             await whatsapp.send_message(
@@ -175,10 +183,24 @@ async def receive_webhook(
                 message={
                     "type": "text",
                     "text": {
-                        "body": f"You selected role {user.role}. ask any question"
+                        "body": translated_text
                     }
                 },
             )
+            translated_text_2, spitch_language_code = await translate_for_speech(
+                                        text=f"Do you have any questions to ask about your farmland?\n",
+                                        language=user.language,
+                                    )
+             # For now, just confirm it worked.
+            await whatsapp.send_message(
+                            recipient=phone,
+                            message={
+                                "type": "text",
+                                "text": {
+                                    "body": translated_text_2
+                                }
+                            },
+                        )
 
             return {"status": "received"}
 

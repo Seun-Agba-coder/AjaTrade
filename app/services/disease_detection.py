@@ -24,10 +24,10 @@ RULES
    cocoa (black pod), yam (anthracnose), pepper and cowpea (common leaf
    diseases and pests). Other crops are possible.
 6. recommended_actions: low-cost and cultural steps only (remove infected
-   plants, clean cuttings, spacing, sanitation, crop rotation). Do NOT give
-   chemical product names or doses.
+   plants, clean cuttings, spacing, sanitation, crop rotation). Also Advice the farmer on
+   chemical products both( names and doses) to use to treat the disease.
 7. farmer_message: simple English, short sentences, under 60 words, no jargon.
-   It must end by advising the farmer to confirm with a local extension officer.
+   
 8. Output ONLY the JSON object below. No markdown, no code fences, no extra text.
 
 JSON SCHEMA (fill in every field; use null where a rule above says so)
@@ -88,7 +88,7 @@ def diagnose(image_bytes: bytes, mime_type="image/jpeg", farmer_text=None):
         ],
         response_format={"type": "json_object"},
         temperature=0.3,
-        max_completion_tokens=1024,
+        max_completion_tokens=800,
     )
     raw = completion.choices[0].message.content
     try:

@@ -5,6 +5,8 @@ LANGUAGES = {
     "lang_pcm": "nigerian pidgin",
     "lang_en": "english",
 }
+DEFAULT_LANGUAGE = "english"
+MAX_BUTTON_TITLE = 20
 
 
 LANGUAGE_OPTIONS = [
@@ -67,15 +69,17 @@ def language_question():
     }
 
 
-def create_language_message():
+def create_language_message(name: str):
     return {
         "type": "interactive",
         "interactive": {
             "type": "list",
             "body": {
                 "text": (
-                    "Welcome to AjaTrade! 👋\n\n"
-                    "Please choose your preferred language "
+                    f"Welcome to AjaTrade {name}! 👋\n\n"
+                    "AjaTrade is a WhatsApp-based, voice-first AI assistant for "
+                    "Nigerian farmers, informal traders, and small manufacturers.\n\n"
+                    "To proceed, please choose your preferred language "
                     "to continue."
                 )
             },
@@ -113,42 +117,70 @@ def create_language_message():
     }
 
 
-def create_role_message():
+ROLE_MESSAGES = {
+    "english": {
+        "body": "What best describes you?",
+        "farmer": "Farmer",
+        "trader": "Trader",
+        "manufacturer": "Manufacturer",
+    },
+    "yoruba": {
+        "body": "Èwo ni ó ṣàpèjúwe rẹ jù lọ?",
+        "farmer": "Àgbẹ̀",
+        "trader": "Oníṣòwò",
+        "manufacturer": "Aṣelọpọ",
+    },
+    "hausa": {
+        "body": "Mene ne ya fi kwatanta ku?",
+        "farmer": "Manomi",
+        "trader": "Ɗan kasuwa",
+        "manufacturer": "Mai ƙera kaya",
+    },
+    "igbo": {
+        "body": "Kedu nke kacha kọwaa gị?",
+        "farmer": "Onye ọrụ ugbo",
+        "trader": "Onye ahịa",
+        "manufacturer": "Onye nrụpụta",
+    },
+    "pidgin": {
+        "body": "Which one best describe you?",
+        "farmer": "Farmer",
+        "trader": "Trader",
+        "manufacturer": "Manufacturer",
+    },
+}
+
+ROLE_BUTTON_IDS = {
+    "farmer": "role_farmer",
+    "trader": "role_trader",
+    "manufacturer": "role_manufacturer",
+}
+ 
+
+def create_role_message(language: str = DEFAULT_LANGUAGE) -> dict:
+    language = (language or "").strip().lower()
+    print("language in create_role_message", language)
+    texts = ROLE_MESSAGES.get(language) or ROLE_MESSAGES["english"]
+    print("Texts for role message", texts)
+ 
+    buttons = []
+    for role, button_id in ROLE_BUTTON_IDS.items():
+        title = texts[role]
+        assert len(title) <= MAX_BUTTON_TITLE, f"Button title too long: {title!r}"
+        buttons.append({
+            "type": "reply",
+            "reply": {"id": button_id, "title": title},
+        })
+ 
     return {
         "type": "interactive",
         "interactive": {
             "type": "button",
-            "body": {
-                "text": "What best describes you?"
-            },
-            "action": {
-                "buttons": [
-                    {
-                        "type": "reply",
-                        "reply": {
-                            "id": "role_farmer",
-                            "title": "Farmer"
-                        }
-                    },
-                    {
-                        "type": "reply",
-                        "reply": {
-                            "id": "role_trader",
-                            "title": "Trader"
-                        }
-                    },
-                    {
-                        "type": "reply",
-                        "reply": {
-                            "id": "role_manufacturer",
-                            "title": "Manufacturer"
-                        }
-                    }
-                ]
-            }
-        }
+            "body": {"text": texts["body"]},
+            "action": {"buttons": buttons},
+        },
     }
-
+ 
 ROLES = {
     "role_farmer": "farmer",
     "role_trader": "trader",
@@ -209,13 +241,13 @@ GOODBYE_MESSAGES = {
 }
 
 
-ROLE_MESSAGES = {
-    "en": "What best describes you?",
-    "ha": "Wanne ne ya fi bayyana kai?",
-    "yo": "Èwo ni ó ṣàpèjúwe rẹ jùlọ?",
-    "ig": "Kedu nke kacha kọwaa gị?",
-    "pcm": "Which one describe you pass?",
-}
+# ROLE_MESSAGES = {
+#     "en": "What best describes you?",
+#     "ha": "Wanne ne ya fi bayyana kai?",
+#     "yo": "Èwo ni ó ṣàpèjúwe rẹ jùlọ?",
+#     "ig": "Kedu nke kacha kọwaa gị?",
+#     "pcm": "Which one describe you pass?",
+# }
 
 
 WELCOME_MESSAGES = {

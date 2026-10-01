@@ -9,6 +9,7 @@ from app.services.whatsapp.get_media import fetch_voice_note, fetch_whatsapp_ima
 from app.services.disease_detection import diagnose
 from app.services.text_to_speech import text_to_speech
 from app.services.whatsapp.send_media import send_text, send_voice_note
+from app.schemas.memory import storage
 
 
 
@@ -17,6 +18,8 @@ logger = logging.getLogger("webhook")
 
 async def handle_message(message: Message, contact_name: str | None) -> None:
     """Do the real work here (transcribe voice, call your AI, send reply...)."""
+    language_selected = storage.get_user(message.from_).language
+    logger.info("Handling message from %s (%s), language=%s", message.from_, contact_name, language_selected)
     sender = message.from_
     msg_type = message.type
     logger.info("sender info %s", sender)
@@ -49,17 +52,26 @@ async def handle_message(message: Message, contact_name: str | None) -> None:
             len(image_bytes),
             mime_type,
         )
+        logger.info("Farmer's caption: %s", message.image.caption)
+        translated_text = None
+        if (message.image.caption):
+            result = await translate_to_english(message.image.caption)
+            translated_text = result.get("english")
+        
 
-        diagnosis = diagnose(image_bytes, mime_type)
+        diagnosis = diagnose(image_bytes, mime_type, farmer_text=translated_text)
         logger.info("Diagnosis for media_id=%s: %s", message.image.id, diagnosis)
-        voice_note = await text_to_speech(diagnosis["farmer_message"], "yoruba")
+        translated_farmer_message, spitch_lang_code = await translate_for_speech(diagnosis["farmer_message"], language_selected)
+        logger.info("Translated farmer message: %s (Spitch code: %s)", translated_farmer_message, spitch_lang_code)
+        voice_note = await text_to_speech(translated_farmer_message, language_selected)
         if voice_note:
             sent = await send_voice_note(sender, voice_note)
             logger.info("Sent diagnosis voice note to %s: success=%s", sender, sent)
         else:
             sent = await send_text(sender, diagnosis["farmer_message"])
             logger.info(
-                "TTS unavailable for yoruba; sent text fallback to %s: success=%s",
+                "TTS unavailable for %s; sent text fallback to %s: success=%s",
+                language_selected,
                 sender,
                 sent,
             )
