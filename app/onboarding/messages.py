@@ -403,3 +403,47 @@ def text_message(text: str) -> dict:
             "body": text
         },
     }
+
+
+SERVICE_MENU_MESSAGES = {
+    "english": {
+        "greeting": "Hello {name}, I am AjaTrade. How can I help you today?",
+        "greeting_no_name": "Hello, I am AjaTrade. How can I help you today?",
+        "button": "See options",  # max 20 chars
+        "section": "Services",    # max 24 chars
+        "rows": [
+            ("crop_detection", "Diagnose crop problem", "Send a photo or voice note"),
+            ("market_price", "Check market price", "Get today's market price"),
+            ("connect_vendor", "Find a vendor", "Herbicide or fertilizer vendor"),
+            ("connect_person", "Talk to a person", "Speak with a real person"),
+        ],
+    },
+}
+
+
+def service_menu(language: str = "english", name: str | None = None) -> dict:
+    msgs = SERVICE_MENU_MESSAGES.get(language, SERVICE_MENU_MESSAGES["english"])
+    body = (
+        msgs["greeting"].format(name=name)
+        if name
+        else msgs["greeting_no_name"]
+    )
+    return {
+        "type": "interactive",
+        "interactive": {
+            "type": "list",
+            "body": {"text": body},
+            "action": {
+                "button": msgs["button"],
+                "sections": [
+                    {
+                        "title": msgs["section"],
+                        "rows": [
+                            {"id": rid, "title": title, "description": desc}
+                            for rid, title, desc in msgs["rows"]
+                        ],                 
+                    }
+                ],
+            },
+        },
+    }

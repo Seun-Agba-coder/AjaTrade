@@ -26,6 +26,7 @@ from app.onboarding.messages import (
     restart_message,
     text_message,
     full_privacy_notice,
+    service_menu,
     greeting_message,
     ROLE_COMPLETE_MESSAGE,
 )
@@ -189,8 +190,7 @@ class OnboardingStateMachine:
         user.state = "active"
         await self.storage.save_user(user)
 
-        return text_message(f"You choose the role of: {role.capitalize()}")
-
+        return service_menu(user.language, name=user.preferred_name or user.name)
     async def handle_declined(self, user: User, answer: str | None):
         language = user.language or "en"
 
