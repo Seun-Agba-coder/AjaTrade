@@ -150,28 +150,38 @@ ROLE_MESSAGES = {
     },
 }
 
-ROLE_BUTTON_IDS = {
-    "farmer": "role_farmer",
-    "trader": "role_trader",
-    "manufacturer": "role_manufacturer",
+ROLES = {
+    "role_farmer": "farmer",
+    "role_trader": "trader",
+    "role_manufacturer": "manufacturer",
 }
- 
+
+
+def role_message(language: str = DEFAULT_LANGUAGE) -> dict:
+    """Role selection: plain text requesting the role."""
+    language = (language or "").strip().lower()
+    texts = ROLE_MESSAGES.get(language) or ROLE_MESSAGES["english"]
+    return {
+        "type": "text",
+        "text": {"body": texts["body"]},
+    }
+
 
 def create_role_message(language: str = DEFAULT_LANGUAGE) -> dict:
+    """Show the role selection. No internal IDs in the UI."""
     language = (language or "").strip().lower()
-    print("language in create_role_message", language)
     texts = ROLE_MESSAGES.get(language) or ROLE_MESSAGES["english"]
-    print("Texts for role message", texts)
- 
+    print("Texts: :", texts)
     buttons = []
-    for role, button_id in ROLE_BUTTON_IDS.items():
+    for role_id, role in ROLES.items():
+        print("role:", role, "role_id:", role_id)
         title = texts[role]
         assert len(title) <= MAX_BUTTON_TITLE, f"Button title too long: {title!r}"
         buttons.append({
             "type": "reply",
-            "reply": {"id": button_id, "title": title},
+            "reply": {"id": role_id, "title": title},
         })
- 
+
     return {
         "type": "interactive",
         "interactive": {
@@ -189,7 +199,7 @@ ROLES = {
 
 
 CONSENT_MESSAGES = {
-    "en": (
+    "english": (
         "Before we continue, we need your consent.\n\n"
         "We may collect your phone number, voice notes, crop photos, "
         "location, and questions. We use this information to provide "
@@ -197,7 +207,7 @@ CONSENT_MESSAGES = {
         "Do you agree?"
     ),
 
-    "ha": (
+    "hausa": (
         "Kafin mu ci gaba, muna buƙatar izininka.\n\n"
         "Za mu iya tattara lambar wayarka, saƙonnin murya, "
         "hotunan amfanin gona, wurinka, da tambayoyinka. "
@@ -206,7 +216,7 @@ CONSENT_MESSAGES = {
         "Ka yarda?"
     ),
 
-    "yo": (
+    "yoruba": (
         "Ṣáájú kí a tó tẹ̀síwájú, a nílò ìfọwọ́sí rẹ.\n\n"
         "A lè gba nọ́mbà fóònù rẹ, àwọn ohun tí o gbé sílẹ̀ "
         "ní ohùn, àwọn fọ́tò irugbin, ibi tí o wà, àti àwọn ìbéèrè rẹ. "
@@ -214,7 +224,7 @@ CONSENT_MESSAGES = {
         "Ṣé o fọwọ́ sí?"
     ),
 
-    "ig": (
+    "igbo": (
         "Tupu anyị aga n'ihu, anyị chọrọ nkwenye gị.\n\n"
         "Anyị nwere ike ịnakọta nọmba ekwentị gị, ozi olu, "
         "foto ihe ọkụkụ, ebe ị nọ, na ajụjụ gị. "
@@ -222,7 +232,7 @@ CONSENT_MESSAGES = {
         "Ị kwenyere?"
     ),
 
-    "pcm": (
+    "pidgin": (
         "Before we continue, we need your consent.\n\n"
         "We fit collect your phone number, voice notes, crop photos, "
         "location, and questions. We go use the information to give "
@@ -231,14 +241,92 @@ CONSENT_MESSAGES = {
     ),
 }
 
+CONSENST_BUTTONS = {
+    "english": [
+        "i agree",
+        "read more",
+        "don't save my chats"
+    ],
+    "yoruba": [
+        "Mo gba pẹ̀lú rẹ̀,i agree",
+        "Kà sí i",
+        "Mẹ́ṣọ́ ọ̀rọ̀ mi mọ́"
+    ],
+    "igbo": [
+        "Anabatara m",
+        "Gụọ karia",
+        "Anekwala okwu m"
+    ], 
+    "hausa  ": [
+        "Na yarda", 
+        "Karanta sauran", 
+        "Kada ka adana tattaunawa ta"
+    ], 
+    "pidgin": [
+        "I gree", 
+        "Read more", 
+        "No save my chat"
+    ]
+}
 
 GOODBYE_MESSAGES = {
-    "en": "No problem. Thank you for your time. You can message us again anytime.",
-    "ha": "Babu matsala. Mun gode da lokacinka. Za ka iya sake turo mana saƙo a kowane lokaci.",
-    "yo": "Kò sí ìṣòro. A dúpẹ́ fún àkókò rẹ. O lè tún fi ìránṣẹ́ ránṣẹ́ sí wa nígbàkigbà.",
-    "ig": "Ọ dịghị nsogbu. Daalụ maka oge gị. Ị nwere ike ịkpọtụrụ anyị ọzọ mgbe ọ bụla.",
-    "pcm": "No wahala. Thank you for your time. You fit message us again anytime.",
+    "english": "No problem. Thank you for your time. You can message us again anytime.",
+    "hausa": "Babu matsala. Mun gode da lokacinka. Za ka iya sake turo mana saƙo a kowane lokaci.",
+    "yoruba": "Kò sí ìṣòro. A dúpẹ́ fún àkókò rẹ. O lè tún fi ìránṣẹ́ ránṣẹ́ sí wa nígbàkigbà.",
+    "igbo": "Ọ dịghị nsogbu. Daalụ maka oge gị. Ị nwere ike ịkpọtụrụ anyị ọzọ mgbe ọ bụla.",
+    "pidgin": "No wahala. Thank you for your time. You fit message us again anytime.",
 }
+
+
+def full_privacy_notice(language: str = "english") -> str:
+    """Fuller privacy notice for the 'Read more' link."""
+    text = (
+        "AjaTrade is an AI assistant. We save your chat history so we can "
+        "remember your crops and past questions.\n\n"
+        "What we collect: your name, phone number, messages, voice notes, "
+        "crop photos, and location (if you send it).\n"
+        "Why: to give you farming and trade advice.\n"
+        "Who processes it: WhatsApp/Meta, the speech-to-text, translation, "
+        "text-to-speech, and crop-diagnosis providers. Some may process your "
+        "data outside Nigeria.\n"
+        "We never sell your information.\n"
+        "How long: up to 90 days for chat history, unless you delete it.\n"
+        "Your rights: type \"my data\" to see what is saved, or \"delete my "
+        "data\" to erase it.\n"
+        "Talk to a real person: type \"human\".\n"
+    )
+    return text
+
+
+def consent_message(language: str = "english") -> dict:
+    """Privacy notice with the three reply buttons."""
+    short = CONSENT_MESSAGES.get(
+        language, CONSENT_MESSAGES["english"]
+    )
+   
+    return {
+        "type": "interactive",
+        "interactive": {
+            "type": "button",
+            "body": {"text": short},
+            "action": {
+                "buttons": [
+                    {
+                        "type": "reply",
+                        "reply": {"id": "consent_yes", "title": CONSENST_BUTTONS.get(language, CONSENST_BUTTONS[language])[0]},
+                    },
+                    {
+                        "type": "reply",
+                        "reply": {"id": "consent_read_more", "title": CONSENST_BUTTONS.get(language, CONSENST_BUTTONS[language])[1]},
+                    },
+                    {
+                        "type": "reply",
+                        "reply": {"id": "consent_no", "title": CONSENST_BUTTONS.get(language, CONSENST_BUTTONS[language])[2]},
+                    },
+                ]
+            },
+        },
+    }
 
 
 # ROLE_MESSAGES = {
@@ -266,3 +354,52 @@ RESTART_MESSAGES = {
     "ig": "Ị chọrọ ịmalite ọzọ?",
     "pcm": "You wan start over?",
 }
+
+
+def restart_message(language: str = DEFAULT_LANGUAGE) -> dict:
+    language = (language or "").strip().lower()
+    return text_message(
+        RESTART_MESSAGES.get(language, RESTART_MESSAGES["en"])
+    )
+
+
+ROLE_COMPLETE_MESSAGE = {
+    "en": "You selected a role. What would you like to ask?",
+    "ha": "Muna da hari yadda za a iya help you?",
+    "yo": "O gbọ́dọ̀ jẹ́ ni o fẹ́ síwájì sí?",
+    "ig": "O na-eji ọ bụla?",
+    "pcm": "You selected role. Kese na o want to ask?",
+}
+
+
+def greeting_message(language: str, name: str) -> dict:
+    """Post-role greeting: plain text with the user's name."""
+    language = (language or "en").strip().lower()
+    text = WELCOME_MESSAGES.get(language, WELCOME_MESSAGES["en"])
+    return text_message(f"Hello {name}, {text}")
+
+
+# Shown when the database is unreachable. Kept in English because we cannot
+# read the user's chosen language without storage.
+# REVIEW: a native speaker should verify this wording.
+STORAGE_FALLBACK_MESSAGE = (
+    "Sorry, we cannot reach our system right now. Please try again in a few "
+    "minutes."
+)
+
+# Shown when an unexpected error happens after the reply was queued. Kept in
+# English because we may not have been able to read the chosen language.
+# REVIEW: a native speaker should verify this wording.
+GENERIC_ERROR_MESSAGE = (
+    "Sorry, something went wrong on our side. Please send your message again."
+)
+
+
+def text_message(text: str) -> dict:
+    """Simple WhatsApp text message."""
+    return {
+        "type": "text",
+        "text": {
+            "body": text
+        },
+    }

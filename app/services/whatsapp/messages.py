@@ -9,8 +9,7 @@ from app.services.whatsapp.get_media import fetch_voice_note, fetch_whatsapp_ima
 from app.services.disease_detection import diagnose
 from app.services.text_to_speech import text_to_speech
 from app.services.whatsapp.send_media import send_text, send_voice_note
-from app.schemas.memory import storage
-
+from app.storage import StorageUnavailableError, mask_phone, storage
 
 
 logger = logging.getLogger("webhook")
@@ -18,21 +17,42 @@ logger = logging.getLogger("webhook")
 
 async def handle_message(message: Message, contact_name: str | None) -> None:
     """Do the real work here (transcribe voice, call your AI, send reply...)."""
-    language_selected = storage.get_user(message.from_).language
-    logger.info("Handling message from %s (%s), language=%s", message.from_, contact_name, language_selected)
     sender = message.from_
+    try:
+        user = await storage.get_user(sender)
+    except StorageUnavailableError as error:
+        # Never crash the background task; continue without the language.
+        logger.error(
+            "Storage unavailable for %s: %s", mask_phone(sender), error
+        )
+        user = None
+    language_selected = user.language if user else None
+
+    logger.info(
+        "Handling message from %s (%s), language=%s",
+        mask_phone(sender),
+        contact_name,
+        language_selected,
+    )
     msg_type = message.type
-    logger.info("sender info %s", sender)
+    logger.info("sender info %s", mask_phone(sender))
     if msg_type == "text" and message.text is not None:
-        logger.info("Text from %s (%s): %s", sender, contact_name, message.text.body)
+        logger.info(
+            "Text from %s (%s): %s",
+            mask_phone(sender),
+            contact_name,
+            message.text.body,
+        )
     elif msg_type == "audio" and message.audio is not None:
-        logger.info("Voice note from %s, media_id=%s", sender, message.audio.id)
+        logger.info(
+            "Voice note from %s, media_id=%s", mask_phone(sender), message.audio.id
+        )
         print("Message type is audio, fetching voice note...")
         audio_bytes, mime_type = await fetch_voice_note(message.audio.id)
         logger.info(
             "Fetched voice note media_id=%s from %s: %d bytes (%s)",
             message.audio.id,
-            message.from_,
+            mask_phone(sender),
             len(audio_bytes),
             mime_type,
         )
@@ -43,12 +63,14 @@ async def handle_message(message: Message, contact_name: str | None) -> None:
 
         logger.info("Translated text: %s", translated_text)
     elif msg_type == "image" and message.image is not None:
-        logger.info("Image from %s, media_id=%s", sender, message.image.id)
+        logger.info(
+            "Image from %s, media_id=%s", mask_phone(sender), message.image.id
+        )
         mime_type, image_bytes = await fetch_whatsapp_image(message.image.id)
         logger.info(
             "Fetched image media_id=%s from %s: %d bytes (%s)",
             message.image.id,
-            sender,
+            mask_phone(sender),
             len(image_bytes),
             mime_type,
         )
@@ -57,7 +79,7 @@ async def handle_message(message: Message, contact_name: str | None) -> None:
         if (message.image.caption):
             result = await translate_to_english(message.image.caption)
             translated_text = result.get("english")
-        
+
 
         diagnosis = diagnose(image_bytes, mime_type, farmer_text=translated_text)
         logger.info("Diagnosis for media_id=%s: %s", message.image.id, diagnosis)
@@ -66,13 +88,17 @@ async def handle_message(message: Message, contact_name: str | None) -> None:
         voice_note = await text_to_speech(translated_farmer_message, language_selected)
         if voice_note:
             sent = await send_voice_note(sender, voice_note)
-            logger.info("Sent diagnosis voice note to %s: success=%s", sender, sent)
+            logger.info(
+                "Sent diagnosis voice note to %s: success=%s",
+                mask_phone(sender),
+                sent,
+            )
         else:
             sent = await send_text(sender, diagnosis["farmer_message"])
             logger.info(
                 "TTS unavailable for %s; sent text fallback to %s: success=%s",
                 language_selected,
-                sender,
+                mask_phone(sender),
                 sent,
             )
     else:

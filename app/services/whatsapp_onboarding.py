@@ -22,8 +22,9 @@ class WhatsAppService:
     async def send_message(
         self,
         recipient: str,
-        message: dict,
+        message: dict | list[dict],
     ):
+        
         payload = {
             "messaging_product": "whatsapp",
             "to": recipient,
@@ -35,6 +36,7 @@ class WhatsAppService:
             "Content-Type": "application/json",
         }
 
+             
         async with httpx.AsyncClient() as client:
             response = await client.post(
                 self.url,

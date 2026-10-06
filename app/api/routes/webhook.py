@@ -19,11 +19,9 @@ from app.schemas.webhook import WebhookPayload
 from app.services.whatsapp.messages import handle_message
 from app.services.translation import translate_for_speech
 
-from app.schemas.memory import storage, User
-# from app.onboarding.state_machine import OnboardingStateMachine
+from app.storage.postgres import storage
+from app.onboarding.state_machine import OnboardingStateMachine
 from app.services.whatsapp_onboarding import WhatsAppService
-from app.onboarding.messages import create_language_message, create_role_message
-from app.onboarding.messages import LANGUAGES, ROLES
 
 import os
 from dotenv import load_dotenv
@@ -36,8 +34,7 @@ logger = logging.getLogger("webhook")
 router = APIRouter()
 
 
-
-# onboarding = OnboardingStateMachine(storage)
+onboarding = OnboardingStateMachine(storage)
 
 
 whatsapp = WhatsAppService(
@@ -77,7 +74,7 @@ async def receive_webhook(
         settings.whatsapp_app_secret,
     ):
         raise HTTPException(status_code=403, detail="Invalid signature")
-    
+
     payload_json = await request.json()
     value = payload_json["entry"][0]["changes"][0]["value"]
 
@@ -87,128 +84,22 @@ async def receive_webhook(
         return {"status": "ignored"}
 
     message = messages[0]
-
     phone = message["from"]
-    user = storage.get_user(phone)
-    if user is None:
-    # This is a new user.
-        user = User(
-        phone=phone,
-        state="new",
-    )
+    name= value["contacts"][0]["profile"]["name"]
 
-        storage.save_user(user)
+    # Let the state machine drive everything from here.
+    response = await onboarding.process(phone, message, name)
 
-        # Send language selection.
-        response = create_language_message(name=payload_json["entry"][0]["changes"][0]["value"]["contacts"][0]["profile"]["name"])
-
-        await whatsapp.send_message(
-        recipient=phone,
-        message=response,
-    )
-        
+    # Send the reply back to the user, if the state machine produced one.
+    if response is not None:
+        logger.info(f"Sending response to {phone}: {isinstance(response, list)}")
+        if not isinstance(response, list):
+            await whatsapp.send_message(recipient=phone, message=response)
+        else: 
+            for msg in response:
+                await whatsapp.send_message(recipient=phone, message=msg)
         return {"status": "received"}
-    elif storage.get_state(phone) == "new" :
-        # Get the selected WhatsApp list option
-        interactive = message.get("interactive", {})
-        list_reply = interactive.get("list_reply")
-        user = storage.get_user(phone)
 
-        if list_reply:
-            selected_language_id = list_reply.get("id")
-
-            language = LANGUAGES.get(selected_language_id)
-            print("language selected", language)
-            if language:
-                user.language = language
-
-                # Move them to the next state.
-                user.state = "awaiting_consent"
-
-                storage.save_user(user)
-
-                print(
-                f"User {user.phone} selected {user.language}"
-            )
-            response = create_role_message(language=user.language)
-            translated_text, spitch_language_code = await translate_for_speech(
-                text=f"You selected {user.language}.",
-                language=user.language,
-            )
-            # For now, just confirm it worked.
-            await whatsapp.send_message(
-                recipient=phone,
-                message={
-                    "type": "text",
-                    "text": {
-                        "body": translated_text
-                    }
-                },
-            )
-            # For now, just confirm it worked.
-            await whatsapp.send_message(
-                recipient=phone,
-                message=response,
-            )
-
-            return {"status": "received"}
-    elif  storage.get_user(phone).role == None: 
-        # Get the selected WhatsApp button option
-        interactive = message.get("interactive", {})
-        button_reply = interactive.get("button_reply")
-        user = storage.get_user(phone)
-
-        if button_reply:
-            selected_role_id = button_reply.get("id")
-
-            if selected_role_id:
-                user.role = ROLES.get(selected_role_id)
-
-                # Move them to the next state.
-                user.state = "onboarding_complete"
-
-                storage.save_user(user)
-
-                print(
-                f"User {user.phone} selected role {user.role}"
-            )
-            translated_text, spitch_language_code = await translate_for_speech(
-                            text=f"You selected role as {user.role}. Ask any question?\n",
-                            language=user.language,
-                        )
-
-            # For now, just confirm it worked.
-            await whatsapp.send_message(
-                recipient=phone,
-                message={
-                    "type": "text",
-                    "text": {
-                        "body": translated_text
-                    }
-                },
-            )
-            translated_text_2, spitch_language_code = await translate_for_speech(
-                                        text=f"Do you have any questions to ask about your farmland?\n",
-                                        language=user.language,
-                                    )
-             # For now, just confirm it worked.
-            await whatsapp.send_message(
-                            recipient=phone,
-                            message={
-                                "type": "text",
-                                "text": {
-                                    "body": translated_text_2
-                                }
-                            },
-                        )
-
-            return {"status": "received"}
-
-
-
-
-
-    
     payload = WebhookPayload.model_validate(await request.json())
 
     for entry in payload.entry:
@@ -216,9 +107,9 @@ async def receive_webhook(
             value = change.value
             contacts = {contact.wa_id: contact.profile.name for contact in value.contacts}
 
-            for message in value.messages:
-                name = contacts.get(message.from_)
-                background_tasks.add_task(handle_message, message, name)
+            for msg in value.messages:
+                name = contacts.get(msg.from_)
+                background_tasks.add_task(handle_message, msg, name)
 
             # delivery/read receipts arrive under value["statuses"]; ignored here
 
