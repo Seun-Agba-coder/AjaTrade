@@ -15,6 +15,8 @@ class User:
     preferred_name: str | None = None
     state: str = "new"
     language: str | None = None
+    language_source: str | None = None
+    language_attempts: int = 0
     role: str | None = None
     consent_status: str = "pending"
     consent_at: datetime | None = None

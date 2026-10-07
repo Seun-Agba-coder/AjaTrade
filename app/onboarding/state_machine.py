@@ -73,11 +73,11 @@ class OnboardingStateMachine:
         if user.state == "awaiting_consent":
             return await self.handle_consent(user, answer)
 
-        if user.state == "awaiting_role":
+        if user.state == "awaiting_role" :
             return await self.handle_role(user, answer)
 
-        if user.state == "active":
-            return self.handle_active(user, message)
+        if user.state == "active" :
+            return self.handle_active(user, answer)
 
         if user.state == "declined":
             return await self.handle_declined(user, answer)
@@ -105,17 +105,6 @@ class OnboardingStateMachine:
         if answer in LANGUAGES:
             language = LANGUAGES[answer]
 
-        # Allow typed numbers.
-        elif answer == "1":
-            language = "ha"
-        elif answer == "2":
-            language = "yo"
-        elif answer == "3":
-            language = "ig"
-        elif answer == "4":
-            language = "pcm"
-        elif answer == "5":
-            language = "en"
 
         if language is None:
             return self.invalid_answer(
@@ -144,12 +133,10 @@ class OnboardingStateMachine:
             # Declined: keep only what is needed to run the service (phone for
             # dedupe). No chat history or memory is saved.
             user.consent_status = "declined"
-            user.state = "declined"
+            user.state = "awaiting_role"
             await self.storage.save_user(user)
-            return text_message(
-                GOODBYE_MESSAGES.get(language, GOODBYE_MESSAGES["en"])
-            )
-
+            return [text_message("we would not store any of our chat history"), create_role_message(language)]
+        
         if answer == "consent_read_more":
             # Show the fuller notice, then re-show the buttons.
             messages = [
@@ -190,7 +177,9 @@ class OnboardingStateMachine:
         user.state = "active"
         await self.storage.save_user(user)
 
-        return service_menu(user.language, name=user.preferred_name or user.name)
+        return [ text_message(
+            "Thanks! The main AjaTrade assistant pipeline will handle "
+            "your message here.") , service_menu(user.language, name=user.preferred_name or user.name)]
     async def handle_declined(self, user: User, answer: str | None):
         language = user.language or "en"
 
@@ -212,11 +201,14 @@ class OnboardingStateMachine:
 
     def handle_active(self, user: User, message: dict):
         """Placeholder for the main AjaTrade pipeline."""
-        return text_message(
-            "Thanks! The main AjaTrade assistant pipeline will handle "
-            "your message here."
-        )
+        if message == "crop_detection":
+            return text_message("Please send a photo or voice note of your crop problem, and we will diagnose it for you.")
+        elif message == "market_price":
+            return text_message("Please send the name of the crop you want to check the market price for, and we will provide you with today's market price.")
+        elif message == "connect_vendor":
+            return text_message("Please send the name of the fertilizer or herbicide you are looking for, and we will help you find a vendor.")
 
+  
     def normalize_input(self, message: dict) -> str | None:
         """Return the meaningful answer from a WhatsApp message: an interactive
         reply ID, an ordinary text body, or a typed number."""

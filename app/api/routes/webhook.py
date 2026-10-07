@@ -19,9 +19,10 @@ from app.schemas.webhook import WebhookPayload
 from app.services.whatsapp.messages import handle_message
 from app.services.translation import translate_for_speech
 
-from app.storage.postgres import storage
+from app.storage import mask_phone, storage
 from app.onboarding.state_machine import OnboardingStateMachine
 from app.services.whatsapp_onboarding import WhatsAppService
+from app.voice.onboarding import VoiceOnboarding
 
 import os
 from dotenv import load_dotenv
@@ -35,6 +36,10 @@ router = APIRouter()
 
 
 onboarding = OnboardingStateMachine(storage)
+
+# Voice notes are handled by the voice pipeline (app/voice); text and button
+# taps stay on the text pipeline.
+voice_onboarding = VoiceOnboarding(storage)
 
 
 whatsapp = WhatsAppService(
@@ -87,12 +92,22 @@ async def receive_webhook(
     phone = message["from"]
     name= value["contacts"][0]["profile"]["name"]
 
-    # Let the state machine drive everything from here.
-    response = await onboarding.process(phone, message, name)
+    # Let the state machine drive everything from here. A voice note goes to
+    # the voice pipeline, which runs its own step for the user's state.
+    if message.get("type") == "audio":
+        response = await voice_onboarding.process(phone, message, name)
+    else:
+        response = await onboarding.process(phone, message, name)
+    
+  
 
     # Send the reply back to the user, if the state machine produced one.
     if response is not None:
-        logger.info(f"Sending response to {phone}: {isinstance(response, list)}")
+        logger.info(
+            "Sending response to %s: list=%s",
+            mask_phone(phone),
+            isinstance(response, list),
+        )
         if not isinstance(response, list):
             await whatsapp.send_message(recipient=phone, message=response)
         else: 

@@ -9,33 +9,6 @@ DEFAULT_LANGUAGE = "english"
 MAX_BUTTON_TITLE = 20
 
 
-LANGUAGE_OPTIONS = [
-    {
-        "id": "lang_ha",
-        "title": "Hausa",
-        "description": "Zaɓi Hausa",
-    },
-    {
-        "id": "lang_yo",
-        "title": "Yoruba",
-        "description": "Yan aṣayan Yorùbá",
-    },
-    {
-        "id": "lang_ig",
-        "title": "Igbo",
-        "description": "Họrọ Igbo",
-    },
-    {
-        "id": "lang_pcm",
-        "title": "Nigerian Pidgin",
-        "description": "Choose Pidgin",
-    },
-    {
-        "id": "lang_en",
-        "title": "English",
-        "description": "Choose English",
-    },
-]
 
 
 def language_question():
@@ -329,14 +302,6 @@ def consent_message(language: str = "english") -> dict:
     }
 
 
-# ROLE_MESSAGES = {
-#     "en": "What best describes you?",
-#     "ha": "Wanne ne ya fi bayyana kai?",
-#     "yo": "Èwo ni ó ṣàpèjúwe rẹ jùlọ?",
-#     "ig": "Kedu nke kacha kọwaa gị?",
-#     "pcm": "Which one describe you pass?",
-# }
-
 
 WELCOME_MESSAGES = {
     "en": "Welcome to AjaTrade! How can we help you today?",
@@ -405,21 +370,68 @@ def text_message(text: str) -> dict:
     }
 
 
-SERVICE_MENU_MESSAGES = {
+SERVICE_MENU_MESSAGES =  {
     "english": {
-        "greeting": "Hello {name}, I am AjaTrade. How can I help you today?",
-        "greeting_no_name": "Hello, I am AjaTrade. How can I help you today?",
-        "button": "See options",  # max 20 chars
-        "section": "Services",    # max 24 chars
-        "rows": [
-            ("crop_detection", "Diagnose crop problem", "Send a photo or voice note"),
-            ("market_price", "Check market price", "Get today's market price"),
-            ("connect_vendor", "Find a vendor", "Herbicide or fertilizer vendor"),
-            ("connect_person", "Talk to a person", "Speak with a real person"),
-        ],
+      "greeting": "Hello {name}, I am AjaTrade. How can I help you today?",
+      "greeting_no_name": "Hello, I am AjaTrade. How can I help you today?",
+      "button": "See options",
+      "section": "Services",
+      "rows": [
+        ["crop_detection", "Diagnose crop problem", "Send a photo or voice note"],
+        ["market_price", "Check market price", "Get today's market price"],
+        ["connect_vendor", "Find a vendor", "Herbicide or fertilizer vendor"],
+       
+      ]
     },
-}
+    "hausa": {
+      "greeting": "Sannu {name}, ni ne AjaTrade. Yaya zan iya taimaka muku a yau?",
+      "greeting_no_name": "Sannu, ni ne AjaTrade. Yaya zan iya taimaka muku a yau?",
+      "button": "Duba zabi",
+      "section": "Ayyuka",
+      "rows": [
+        ["crop_detection", "Gano matsalar shuka", "Aika hoto ko saƙon murya"],
+        ["market_price", "Duba farashin kasuwa", "Samu farashin yau"],
+        ["connect_vendor", "Nemo dillali", "Mai magani ko taki"],
 
+      ]
+    },
+    "igbo": {
+      "greeting": "Ndewo {name}, abụ m AjaTrade. Kedu ka m ga-esi nyere gị aka taa?",
+      "greeting_no_name": "Ndewo, abụ m AjaTrade. Kedu ka m ga-esi nyere gị aka taa?",
+      "button": "Hụ nhọrọ",
+      "section": "Ọrụ anyị",
+      "rows": [
+        ["crop_detection", "Chọpụta nsogbu akụkụ", "Zite foto ma ọ bụ olu"],
+        ["market_price", "Lelee ọnụ ahịa ahịa", "Nweta ọnụ ahịa taa"],
+        ["connect_vendor", "Chọta onye na-ere", "Onye na-ere ọgwụ/nri osisi"],
+      
+      ]
+    },
+    "pidgin": {
+      "greeting": "Hello {name}, I be AjaTrade. How I fit help you today?",
+      "greeting_no_name": "Hello, I be AjaTrade. How I fit help you today?",
+      "button": "Check options",
+      "section": "Our Services",
+      "rows": [
+        ["crop_detection", "Check crop problem", "Send picture or voice note"],
+        ["market_price", "Check market price", "Get today market price"],
+        ["connect_vendor", "Find vendor", "Find herbicide or fertilizer"],
+
+      ]
+    },
+    "yoruba": {
+      "greeting": "Pẹlẹ o {name}, emi ni AjaTrade. Bawo ni mo ṣe le ràn ọ́ lọ́wọ́ lónìí?",
+      "greeting_no_name": "Pẹlẹ o, emi ni AjaTrade. Bawo ni mo ṣe le ràn ọ́ lọ́wọ́ lónìí?",
+      "button": "Wo àwọn aṣàyàn",
+      "section": "Àwọn Iṣẹ́",
+      "rows": [
+        ["crop_detection", "Yẹ ìṣòro irúgbìn wò", "Fi àwòrán tàbí ohùn ránṣẹ́"],
+        ["market_price", "Wo iye ọjà", "Gba iye ọjà t'òní"],
+        ["connect_vendor", "Wá olùtà", "Olùtà egbògi tàbí ajílẹ̀"],
+        ["connect_person", "Bá ènìyàn sọ̀rọ̀", "Bá ènìyàn gidi sọ̀rọ̀"]
+      ]
+    }
+  }
 
 def service_menu(language: str = "english", name: str | None = None) -> dict:
     msgs = SERVICE_MENU_MESSAGES.get(language, SERVICE_MENU_MESSAGES["english"])
@@ -447,3 +459,5 @@ def service_menu(language: str = "english", name: str | None = None) -> dict:
             },
         },
     }
+
+

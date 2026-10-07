@@ -11,7 +11,7 @@ through them.
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, Text, func
+from sqlalchemy import DateTime, Integer, Text, func, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -31,6 +31,10 @@ class UserRow(Base):
         Text, nullable=False, server_default="new", default="new"
     )
     language: Mapped[str | None] = mapped_column(Text, nullable=True)
+    language_source: Mapped[str | None] = mapped_column(Text, nullable=True)
+    language_attempts: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=text("0"), default=0
+    )
     role: Mapped[str | None] = mapped_column(Text, nullable=True)
     consent_status: Mapped[str] = mapped_column(
         Text, nullable=False, server_default="pending", default="pending"
