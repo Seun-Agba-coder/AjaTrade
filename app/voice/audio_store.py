@@ -54,6 +54,22 @@ ONBOARDING_AUDIO_FORMAT = os.environ.get("ONBOARDING_AUDIO_FORMAT", "mp3")
 MEDIA_TYPE = "audio/mpeg" if ONBOARDING_AUDIO_FORMAT == "mp3" else "audio/ogg"
 
 
+# The text onboarding stores the full language names from ``LANGUAGES`` (for
+# example "nigerian pidgin"), while the audio assets are keyed by short names
+# ("pidgin"). Map the stored value to the asset key so the right file is sent
+# instead of silently falling back to English.
+AUDIO_LANGUAGE_ALIASES: dict[str, str] = {
+    "nigerian pidgin": "pidgin",
+    "pcm": "pidgin",
+}
+
+
+def audio_language(language: str | None) -> str:
+    """Return the audio asset key for a stored language value."""
+    lang = (language or "").strip().lower()
+    return AUDIO_LANGUAGE_ALIASES.get(lang, lang)
+
+
 def _load_manifest() -> dict[str, Any]:
     """Return the parsed manifest, or an empty dict on any failure."""
     if not MANIFEST_PATH.exists():
@@ -99,6 +115,7 @@ class AudioStore:
         Falls back to English when the exact language is missing. Returns
         ``None`` when the script, language, or file does not exist.
         """
+        language = audio_language(language)
         entry = self._manifest.get(script_id, {}).get(language)
         if entry is None:
             # Fallback to English.
@@ -120,6 +137,7 @@ class AudioStore:
         """Return the source text for a script and language, or ``None``."""
         from app.voice.scripts import SCRIPTS
 
+        language = audio_language(language)
         entry = SCRIPTS.get(script_id)
         if entry is None:
             return None

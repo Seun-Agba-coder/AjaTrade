@@ -9,6 +9,7 @@
 #
 # Multi-step flows store the per-user state in the User object (PostgreSQL).
 
+import copy
 from datetime import datetime, timezone
 
 from app.schemas.memory import User
@@ -183,7 +184,7 @@ class OnboardingStateMachine:
     async def handle_declined(self, user: User, answer: str | None):
         language = user.language or "en"
 
-        if answer.lower() == "yes":
+        if (answer or "").lower() == "yes":
             await self.restart(user)
             return language_question()
 
@@ -191,7 +192,7 @@ class OnboardingStateMachine:
 
     def invalid_answer(self, current_question: dict, instruction: str):
         """Keep the user in their current state and show the question again."""
-        question = current_question.copy()
+        question = copy.deepcopy(current_question)
         if question.get("type") == "text":
             question["text"]["body"] = f"{instruction}\n\n{question['text']['body']}"
         elif question.get("type") == "interactive":

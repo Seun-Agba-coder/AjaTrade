@@ -1,8 +1,10 @@
 """WhatsApp webhook endpoints: verification and message delivery."""
 
 import logging
-from pyexpat.errors import messages
+import os
+from typing import Any
 
+from dotenv import load_dotenv
 from fastapi import (
     APIRouter,
     BackgroundTasks,
@@ -15,17 +17,26 @@ from fastapi.responses import PlainTextResponse
 
 from app.config import Settings, get_settings
 from app.core.security import verify_signature
-from app.schemas.webhook import WebhookPayload
-from app.services.whatsapp.messages import handle_message
-from app.services.translation import translate_for_speech
-
-from app.storage import mask_phone, storage
+from app.onboarding.messages import (
+    GENERIC_ERROR_MESSAGE,
+    LANGUAGES,
+    STORAGE_FALLBACK_MESSAGE,
+    text_message,
+)
+from app.onboarding.onboarding_send import (
+    mark_seen,
+    safe_send_whatsapp,
+    send_voice_then_messages,
+    validate_message,
+    voice_script_for_step,
+)
 from app.onboarding.state_machine import OnboardingStateMachine
+from app.schemas.webhook import WebhookPayload
+from app.services.chat_history import record_inbound, record_outgoing
+from app.services.whatsapp.messages import handle_message
 from app.services.whatsapp_onboarding import WhatsAppService
+from app.storage import StorageUnavailableError, mask_phone, storage
 from app.voice.onboarding import VoiceOnboarding
-
-import os
-from dotenv import load_dotenv
 
 load_dotenv()
 
@@ -37,8 +48,9 @@ router = APIRouter()
 
 onboarding = OnboardingStateMachine(storage)
 
-# Voice notes are handled by the voice pipeline (app/voice); text and button
-# taps stay on the text pipeline.
+# The text state machine owns every state and stored value. The voice module
+# only resolves a voice note into an answer id, which is then handed to the
+# same handler (combined-onboarding-spec section 5, rule 4).
 voice_onboarding = VoiceOnboarding(storage)
 
 
@@ -46,7 +58,6 @@ whatsapp = WhatsAppService(
     access_token=os.getenv("WHATSAPP_ACCESS_TOKEN"),
     phone_number_id=os.getenv("WHATSAPP_PHONE_NUMBER_ID"),
 )
-
 
 
 @router.get("/webhook", response_class=PlainTextResponse)
@@ -63,6 +74,24 @@ async def verify_webhook(
     raise HTTPException(status_code=403, detail="Verification failed")
 
 
+def _as_list(
+    reply: dict[str, Any] | list[dict[str, Any]] | None,
+) -> list[dict[str, Any]]:
+    """Normalize a state machine reply into a list of messages."""
+    if reply is None:
+        return []
+    if isinstance(reply, list):
+        return list(reply)
+    return [reply]
+
+
+async def _send_fallback(phone: str, body: str) -> None:
+    """Send one plain fallback message and never raise into the webhook."""
+    await safe_send_whatsapp(
+        whatsapp, phone, validate_message(text_message(body)), logger
+    )
+
+
 @router.post("/webhook")
 async def receive_webhook(
     request: Request,
@@ -71,7 +100,6 @@ async def receive_webhook(
 ) -> dict[str, str]:
     """Accept a webhook delivery, then process it out-of-band."""
     raw_body = await request.body()
-    print("Received webhook payload:", raw_body.decode("utf-8"))
 
     if not verify_signature(
         raw_body,
@@ -85,48 +113,124 @@ async def receive_webhook(
 
     messages = value.get("messages")
     if not messages:
-        print("Webhook event has no incoming message. Ignoring it.")
+        logger.info("Webhook event has no incoming message. Ignoring it.")
         return {"status": "ignored"}
 
     message = messages[0]
     phone = message["from"]
-    name= value["contacts"][0]["profile"]["name"]
+    name = value["contacts"][0]["profile"]["name"]
+    message_id = message.get("id")
+    is_audio = message.get("type") == "audio"
 
-    # Let the state machine drive everything from here. A voice note goes to
-    # the voice pipeline, which runs its own step for the user's state.
-    if message.get("type") == "audio":
-        response = await voice_onboarding.process(phone, message, name)
-    else:
-        response = await onboarding.process(phone, message, name)
-    
-  
-
-    # Send the reply back to the user, if the state machine produced one.
-    if response is not None:
+    # Dedupe by WhatsApp message id so a Meta retry cannot send a voice note
+    # twice and cannot re-run onboarding for the same inbound message.
+    if not mark_seen(message_id):
         logger.info(
-            "Sending response to %s: list=%s",
+            "Duplicate webhook message %s from %s; ignoring",
+            message_id,
             mask_phone(phone),
-            isinstance(response, list),
         )
-        if not isinstance(response, list):
-            await whatsapp.send_message(recipient=phone, message=response)
-        else: 
-            for msg in response:
-                await whatsapp.send_message(recipient=phone, message=msg)
         return {"status": "received"}
 
-    payload = WebhookPayload.model_validate(await request.json())
+    try:
+        user = await onboarding.get_or_create_user(phone, name)
+    except StorageUnavailableError as error:
+        logger.error("Storage unavailable for %s: %s", mask_phone(phone), error)
+        await _send_fallback(phone, STORAGE_FALLBACK_MESSAGE)
+        return {"status": "received"}
 
-    for entry in payload.entry:
-        for change in entry.changes:
-            value = change.value
-            contacts = {contact.wa_id: contact.profile.name for contact in value.contacts}
+    prev_state = user.state
 
-            for msg in value.messages:
-                name = contacts.get(msg.from_)
-                background_tasks.add_task(handle_message, msg, name)
+    # Track the onboarding message (text or a button/list reply), but only if
+    # the user has consented. Runs after the 200, and a storage failure only
+    # logs. An active user's messages are recorded by the main pipeline.
+    if prev_state != "active":
+        background_tasks.add_task(
+            record_inbound, phone, message, wa_message_id=message_id
+        )
 
-            # delivery/read receipts arrive under value["statuses"]; ignored here
+    # Resolve the inbound message into an answer id the text state machine
+    # understands. A voice note is resolved by the voice module; text and
+    # button taps are normalized by the state machine itself.
+    answer: str | None = None
+    prefix: list[dict[str, Any]] = []
+    voice_override: str | None = None
+    send_direct = False
+    try:
+        if is_audio:
+            resolution = await voice_onboarding.resolve_audio(user, message)
+            answer = resolution.answer
+            prefix = list(resolution.prefix_messages)
+            # A voice step may name its own script (for example a replay).
+            voice_override = resolution.voice_script_id
+            # With no answer id the voice note produced its own messages (a
+            # retry prompt, the unsupported notice, or a replayed step) or
+            # nothing at all; never run the text handler with a None answer.
+            send_direct = answer is None
+        else:
+            answer = onboarding.normalize_input(message)
 
-    # Respond 200 fast, otherwise Meta retries the delivery
+        if send_direct:
+            response = prefix
+        else:
+            if is_audio:
+                inbound: dict[str, Any] = {
+                    "type": "interactive",
+                    "interactive": {"button_reply": {"id": answer}},
+                }
+            else:
+                inbound = message
+            reply = await onboarding.process(phone, inbound, name)
+            response = prefix + _as_list(reply)
+    except StorageUnavailableError as error:
+        logger.error("Storage unavailable for %s: %s", mask_phone(phone), error)
+        await _send_fallback(phone, STORAGE_FALLBACK_MESSAGE)
+        return {"status": "received"}
+    except Exception as error:  # noqa: BLE001 - a failure must not become a 500
+        logger.exception("Onboarding failed for %s: %s", mask_phone(phone), error)
+        await _send_fallback(phone, GENERIC_ERROR_MESSAGE)
+        return {"status": "received"}
+
+    if response:
+        # Voice note first, then the text / interactive messages. The helper
+        # awaits the voice send and never lets it block the text path.
+        language = LANGUAGES.get(answer) or user.language
+        script_id = voice_override or voice_script_for_step(prev_state, answer)
+        await send_voice_then_messages(
+            whatsapp,
+            phone,
+            script_id,
+            response,
+            logger,
+            language=language,
+        )
+        # Track the outgoing reply (and the voice script) after the 200, only
+        # if the user has consented.
+        background_tasks.add_task(
+            record_outgoing,
+            phone,
+            response,
+            script_id=script_id,
+            language=language,
+        )
+        return {"status": "received"}
+
+    # An active user's ordinary message has no onboarding reply; hand it to the
+    # main AjaTrade pipeline in the background.
+    if prev_state == "active":
+        payload = WebhookPayload.model_validate(payload_json)
+        for entry in payload.entry:
+            for change in entry.changes:
+                change_value = change.value
+                contacts = {
+                    contact.wa_id: contact.profile.name
+                    for contact in change_value.contacts
+                }
+                for msg in change_value.messages:
+                    background_tasks.add_task(
+                        handle_message, msg, contacts.get(msg.from_)
+                    )
+        return {"status": "received"}
+
+    # A voice step that intentionally sends nothing (replays exhausted).
     return {"status": "received"}

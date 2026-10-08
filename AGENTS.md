@@ -83,8 +83,6 @@ manufacturer). Other profile questions are deferred.
 
 ## Decisions already made (do not revisit without asking)
 
-- Onboarding state is an in-memory dictionary for now. There is no database
-  yet
 - Building a proprietary vision model is deferred. Revisit only if real usage
   shows an accuracy gap, a cost problem at volume, an offline need, or a real
   data moat

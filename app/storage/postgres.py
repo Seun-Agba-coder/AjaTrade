@@ -18,7 +18,7 @@ from typing import Awaitable, Callable, Optional, TypeVar
 
 from sqlalchemy import func, select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -26,8 +26,9 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
+from app.schemas.chat import ChatMessage
 from app.schemas.memory import User
-from app.storage.models import UserRow, Base
+from app.storage.models import Base, MessageRow, UserRow
 
 
 logger = logging.getLogger("storage")
@@ -211,6 +212,33 @@ class PostgresStorage:
             )
             await session.execute(statement)
             await session.commit()
+
+        await self._execute(operation)
+
+    async def save_message(self, message: ChatMessage) -> None:
+        """Insert one chat-history row.
+
+        The caller only reaches here for a consented user, so consent is
+        checked before this point. A duplicate ``wa_message_id`` (a webhook
+        retry that slipped past dedupe) is ignored rather than raised.
+        """
+
+        async def operation(session: AsyncSession) -> None:
+            row = MessageRow(
+                wa_id=message.wa_id,
+                wa_message_id=message.wa_message_id,
+                direction=message.direction,
+                msg_type=message.msg_type,
+                text=message.text,
+                language=message.language,
+                intent=message.intent,
+            )
+            session.add(row)
+            try:
+                await session.commit()
+            except IntegrityError:
+                await session.rollback()
+                logger.info("Duplicate message ignored (dedupe)")
 
         await self._execute(operation)
 

@@ -24,27 +24,18 @@ delete, reword or reorder other items. New items are proposed to me first.
    timestamp. If declined, save nothing.
 
 ## Next up (in this order)
-1. **Create a voice pipeline onboarding flow  (now do step 3 and 4)**,
-   read the VOICE_SPEC.MD to gain more context
-2. **Migrate user storage from the in-memory dictionary to PostgreSQL.**
-   Decision made: PostgreSQL. Local Postgres for development (backend run
-   locally through ngrok, check .env file for Database_Url), Railway Postgres for production. SQLite was
-   considered and rejected. Plan first, wait for my OK. (see "Scope" below)
 
-3. **Decide where user data is stored.** Propose options and wait for my OK.
-   Nothing below that saves data can start until this is decided. Database
-   changes are additive only. use postgr
-
-4. **Track conversations.** Save incoming and outgoing messages, only for users
+1. **Track conversations.** Save incoming and outgoing messages, only for users
    who consented. Store transcripts and diagnosis text, never raw audio or
-   photos.
-5. **Recall previous conversations.** Build the model context from a short
+   photos. (Go over the SPEC.md file go to section 3 to see the Data model used)
+   
+2. **Recall previous conversations.** Build the model context from a short
    rolling summary plus the last few messages. Use memory naturally and do not
    recite the user's history back to them.
-6. **Tailor responses by role.** Farmer replies and trader/manufacturer replies
+3. **Tailor responses by role.** Farmer replies and trader/manufacturer replies
    use different menus and different system prompts, in one shared persona and
    tone prompt.
-7. **User controls:** "my data", "delete my data", "stop saving", "menu",
+4. **User controls:** "my data", "delete my data", "stop saving", "menu",
    "language", "human".
 
 ## Scope (only what the dictionary holds today):

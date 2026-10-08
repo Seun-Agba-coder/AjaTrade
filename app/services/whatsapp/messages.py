@@ -6,7 +6,8 @@ from app.schemas.webhook import Message
 from app.services.speech_to_text import transcribe_voice_note
 from app.services.translation import translate_to_english, translate_for_speech
 from app.services.whatsapp.get_media import fetch_voice_note, fetch_whatsapp_image
-from app.services.disease_detection import diagnose
+from app.services.chat_history import record_message
+from app.services.diagnoses.disease_detection import diagnose
 from app.services.text_to_speech import text_to_speech
 from app.services.whatsapp.send_media import send_text, send_voice_note
 from app.storage import StorageUnavailableError, mask_phone, storage
@@ -43,6 +44,14 @@ async def handle_message(message: Message, contact_name: str | None) -> None:
             contact_name,
             message.text.body,
         )
+        await record_message(
+            sender,
+            "in",
+            "text",
+            message.text.body,
+            wa_message_id=message.id,
+            user=user,
+        )
     elif msg_type == "audio" and message.audio is not None:
         logger.info(
             "Voice note from %s, media_id=%s", mask_phone(sender), message.audio.id
@@ -58,6 +67,15 @@ async def handle_message(message: Message, contact_name: str | None) -> None:
         )
         transcription_text = await transcribe_voice_note(audio_bytes, mime_type)
         logger.info("Transcription: %s", transcription_text)
+        # Store the transcript, never the audio bytes.
+        await record_message(
+            sender,
+            "in",
+            "voice",
+            transcription_text,
+            wa_message_id=message.id,
+            user=user,
+        )
 
         translated_text = await translate_to_english(transcription_text)
 
@@ -83,6 +101,15 @@ async def handle_message(message: Message, contact_name: str | None) -> None:
 
         diagnosis = diagnose(image_bytes, mime_type, farmer_text=translated_text)
         logger.info("Diagnosis for media_id=%s: %s", message.image.id, diagnosis)
+        # Store the diagnosis text, never the photo.
+        await record_message(
+            sender,
+            "in",
+            "image",
+            diagnosis.get("farmer_message"),
+            wa_message_id=message.id,
+            user=user,
+        )
         translated_farmer_message, spitch_lang_code = await translate_for_speech(diagnosis["farmer_message"], language_selected)
         logger.info("Translated farmer message: %s (Spitch code: %s)", translated_farmer_message, spitch_lang_code)
         voice_note = await text_to_speech(translated_farmer_message, language_selected)
@@ -93,6 +120,13 @@ async def handle_message(message: Message, contact_name: str | None) -> None:
                 mask_phone(sender),
                 sent,
             )
+            await record_message(
+                sender,
+                "out",
+                "voice",
+                translated_farmer_message,
+                user=user,
+            )
         else:
             sent = await send_text(sender, diagnosis["farmer_message"])
             logger.info(
@@ -100,6 +134,13 @@ async def handle_message(message: Message, contact_name: str | None) -> None:
                 language_selected,
                 mask_phone(sender),
                 sent,
+            )
+            await record_message(
+                sender,
+                "out",
+                "text",
+                diagnosis["farmer_message"],
+                user=user,
             )
     else:
         logger.info("Unhandled message type: %s", msg_type)

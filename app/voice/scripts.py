@@ -22,6 +22,19 @@ PIDGIN_DEFAULT_NOTICE = (
     "in Pidgin. Let us continue."
 )
 
+# Sent when the voice note is confidently a language we do not support.
+# English only for now; no audio file is generated yet. Add it to ``SCRIPTS``
+# and run the audio generator (python -m voice.generate_assets) when the voice
+# note is recorded. Fallback is still text, so the user is never left in
+# silence.
+# REVIEW: a native speaker should verify this wording before launch.
+UNSUPPORTED_LANGUAGE = {
+    "english": (
+        "Sorry, we only support Hausa, Yoruba, Igbo, Nigerian Pidgin and "
+        "English for now. Please send a voice note in one of these languages."
+    ),
+}
+
 
  
 WELCOME_CONSENT = {

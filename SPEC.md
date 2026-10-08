@@ -191,7 +191,7 @@ user data.
 
 ### Current state
 
-There is no database yet. Onboarding state and user data live in an in-memory
+There is no database yet. Onboarding state and user data live in an in-memory (the user data has not been created check the model.py file)
 dictionary, which is lost on every restart or redeploy. The schema below is the
 **target design**. Do not choose a database or create tables without asking me
 first.

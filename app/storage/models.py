@@ -1,6 +1,6 @@
 """SQLAlchemy models.
 
-The ``users`` table is the only table in scope for now. ``messages``,
+The ``users`` and ``messages`` tables are in scope for now.
 ``conversation_memory`` and ``vendor_requests`` are later items and must be
 added additively.
 
@@ -11,7 +11,16 @@ through them.
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, Integer, Text, func, text
+from sqlalchemy import (
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    Text,
+    UniqueConstraint,
+    func,
+    text,
+)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -47,5 +56,34 @@ class UserRow(Base):
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
     last_seen_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class MessageRow(Base):
+    """One saved incoming or outgoing message (chat history).
+
+    Rows are only written for users whose ``consent_status`` is ``granted``.
+    ``text`` holds the message text, the transcript for a voice note, or the
+    diagnosis summary for a photo; raw audio and photos are never stored.
+    """
+
+    __tablename__ = "messages"
+    __table_args__ = (
+        Index("ix_messages_wa_id", "wa_id"),
+        UniqueConstraint("wa_message_id", name="uq_messages_wa_message_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    wa_id: Mapped[str] = mapped_column(
+        Text, ForeignKey("users.wa_id"), nullable=False
+    )
+    wa_message_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    direction: Mapped[str] = mapped_column(Text, nullable=False)
+    msg_type: Mapped[str] = mapped_column(Text, nullable=False)
+    text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    language: Mapped[str | None] = mapped_column(Text, nullable=True)
+    intent: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

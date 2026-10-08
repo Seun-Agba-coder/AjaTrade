@@ -23,9 +23,16 @@ RULES
    tomato (early blight, late blight, Tuta absoluta), rice (blast),
    cocoa (black pod), yam (anthracnose), pepper and cowpea (common leaf
    diseases and pests). Other crops are possible.
-6. recommended_actions: low-cost and cultural steps only (remove infected
-   plants, clean cuttings, spacing, sanitation, crop rotation). Also Advice the farmer on
-   chemical products both( names and doses) to use to treat the disease.
+6. recommended_actions: list low-cost and cultural steps first (remove infected
+   plants, use clean cuttings, spacing, sanitation, crop rotation). After
+   those, if a chemical treatment is commonly used for the diagnosed problem,
+   add ONE last item naming the product type or active ingredient (for example
+   "a copper-based fungicide" or "a product containing emamectin benzoate").
+   NEVER give doses, mixing amounts, or spray schedules. Instead say: "Ask
+   your agro-dealer for the right product and follow the instructions on the
+   label." Do not recommend any chemical when the plant is healthy, when the
+   diagnosis confidence is low, or when image_status is not "ok"
+
 7. farmer_message: simple English, short sentences, under 60 words, no jargon.
    
 8. Output ONLY the JSON object below. No markdown, no code fences, no extra text.
@@ -93,6 +100,7 @@ def diagnose(image_bytes: bytes, mime_type="image/jpeg", farmer_text=None):
     raw = completion.choices[0].message.content
     try:
         result = json.loads(raw)
+        result = diagnoses_result_check(result)
         if not all(k in result for k in REQUIRED_KEYS):
             raise ValueError("missing keys")
         return result
@@ -103,3 +111,14 @@ def diagnose(image_bytes: bytes, mime_type="image/jpeg", farmer_text=None):
                               "retake_advice": "Please send a clearer photo."},
             "farmer_message": "I could not read that photo well. Please send a clear, close photo of one affected leaf in daylight.",
         }
+
+
+
+
+def diagnoses_result_check(result: json): 
+    if result["image_status"] == "unclear":
+        return {"image_status": result["image_status"], "photo_quality": result["photo_quality"], "farmer_message": "I could not read that photo well. Please send a clearer photo."} 
+    if result["diagnosis"]["primary"]["confidence"] == "low":
+        return {"image_status": result["image_status"], "photo_quality": result["photo_quality"], "farmer_message": "I am not sure of the diseases present. Show the plant to an extension officer."}
+
+    return result

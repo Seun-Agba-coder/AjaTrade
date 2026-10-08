@@ -144,10 +144,8 @@ def create_role_message(language: str = DEFAULT_LANGUAGE) -> dict:
     """Show the role selection. No internal IDs in the UI."""
     language = (language or "").strip().lower()
     texts = ROLE_MESSAGES.get(language) or ROLE_MESSAGES["english"]
-    print("Texts: :", texts)
     buttons = []
     for role_id, role in ROLES.items():
-        print("role:", role, "role_id:", role_id)
         title = texts[role]
         assert len(title) <= MAX_BUTTON_TITLE, f"Button title too long: {title!r}"
         buttons.append({
@@ -272,10 +270,19 @@ def full_privacy_notice(language: str = "english") -> str:
 
 
 def consent_message(language: str = "english") -> dict:
-    """Privacy notice with the three reply buttons."""
+    """Privacy notice with the three reply buttons.
+
+    Button labels fall back to English when the stored value has no labels in
+    ``CONSENST_BUTTONS`` (Hausa's key has trailing spaces; the text flow stores
+    Pidgin as "nigerian pidgin" but the key is "pidgin"). Reported to the owner
+    rather than renaming keys here (combined-onboarding-spec section 8,
+    decision 3). English is the fallback so a user is never dropped
+    mid-onboarding.
+    """
     short = CONSENT_MESSAGES.get(
         language, CONSENT_MESSAGES["english"]
     )
+    labels = CONSENST_BUTTONS.get(language) or CONSENST_BUTTONS["english"]
    
     return {
         "type": "interactive",
@@ -286,15 +293,15 @@ def consent_message(language: str = "english") -> dict:
                 "buttons": [
                     {
                         "type": "reply",
-                        "reply": {"id": "consent_yes", "title": CONSENST_BUTTONS.get(language, CONSENST_BUTTONS[language])[0]},
+                        "reply": {"id": "consent_yes", "title": labels[0]},
                     },
                     {
                         "type": "reply",
-                        "reply": {"id": "consent_read_more", "title": CONSENST_BUTTONS.get(language, CONSENST_BUTTONS[language])[1]},
+                        "reply": {"id": "consent_read_more", "title": labels[1]},
                     },
                     {
                         "type": "reply",
-                        "reply": {"id": "consent_no", "title": CONSENST_BUTTONS.get(language, CONSENST_BUTTONS[language])[2]},
+                        "reply": {"id": "consent_no", "title": labels[2]},
                     },
                 ]
             },
