@@ -1,3 +1,5 @@
+from dotenv.main import logger
+
 import httpx
 
 
@@ -43,7 +45,10 @@ class WhatsAppService:
                 headers=headers,
                 json=payload,
             )
-
+             
+            if response.is_error:
+                logger.error("WhatsApp send failed %s: %s", response.status_code, response.text)
+                
             response.raise_for_status()
 
             return response.json()

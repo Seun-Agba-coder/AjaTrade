@@ -8,6 +8,8 @@ left in silence.
 # REVIEW: a native speaker should verify this wording before launch.
 """
 
+from app.onboarding.messages import GOODBYE_MESSAGES, full_privacy_notice
+
 # Sent after a failed detection attempt, asking for another voice note.
 LOW_CONFIDENCE_RETRY = (
     "Sorry, we could not hear you well. Please send another voice note. "
@@ -123,6 +125,12 @@ SCRIPTS = {
     "welcome_consent": WELCOME_CONSENT,
     "role_ask": ROLE_ASK,
     "service_menu_prompt": SERVICE_MENU_PROMPT,
+    "consent_ack": {"english": CONSENT_ACCEPTED_ACK},
+    "goodbye": GOODBYE_MESSAGES,
+    "privacy_notice": {
+        lang: full_privacy_notice(lang)
+        for lang in ["english", "hausa", "igbo", "yoruba", "pidgin"]
+    },
 }
  
  

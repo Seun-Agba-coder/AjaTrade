@@ -42,7 +42,6 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timezone
 
-from rich_click import option
 
 from app.onboarding.messages import (
     GOODBYE_MESSAGES,
@@ -56,24 +55,26 @@ from app.onboarding.messages import (
 from app.schemas.memory import User
 from app.services.speech_to_text import transcribe_voice_note
 from app.services.translation import (
-    CONSENT_MAPPING_FALLBACK,
-    LANGUAGE_DETECTION_FALLBACK,
-    consent_detector,
     language_detector,
 )
-from app.services.whatsapp.get_media import fetch_voice_note
+from app.services.whatsapp.get_media import  fetch_voice_note
 from app.storage import StorageUnavailableError, mask_phone
 from app.storage import storage as default_storage
 from app.voice.scripts import (
     CONSENT_ACCEPTED_ACK,
-    LOW_CONFIDENCE_RETRY,
     MAX_STEP_REPLAYS,
     PIDGIN_DEFAULT_NOTICE,
     STEP_REPLAY_UNCLEAR,
     get__welcoming_script,
 )
+from app.voice.audio_store import default_store
+
+
 
 logger = logging.getLogger("voice")
+
+
+
 
 # A detected language is trusted at or above this confidence (VOICE_SPEC 4).
 LANGUAGE_CONFIDENCE_THRESHOLD = 0.7
@@ -84,6 +85,8 @@ CONSENT_CONFIDENCE_THRESHOLD = 0.6
 # The welcome, ack and goodbye scripts are interim English until the
 # per-language packs exist (VOICE_SPEC 6.4 / 7).
 INTERIM_SCRIPT_LANGUAGE = "english"
+
+# create AudioStore instance 
 
 # Classifier code -> the row id the text flow's language list uses. The value
 # stored on the user then comes from LANGUAGES, so the two flows cannot drift.
@@ -108,12 +111,12 @@ def classifier_code_to_stored_language(code: str | None) -> str | None:
 
 class VoiceOnboarding:
     """Onboarding for users whose first message is a voice note."""
-
     def __init__(self, storage=None):
         self.storage = storage or default_storage
-        # Replay counters for unclear answers, per phone, in memory only.
-        # Flow control, not user data; reset when a step is answered.
-        self._consent_replays: dict[str, int] = {}
+        self.audiostore = default_store
+        # Startup check: warn about any onboarding audio that is missing.
+        for _m in self.audiostore.check_missing():
+            logger.warning("Missing onboarding audio: %s", _m)
 
     async def get_or_create_user(
         self, phone: str, name: str | None = None
@@ -145,6 +148,7 @@ class VoiceOnboarding:
         elif user.state == "awaiting_language":
             reply = await self.handle_language(user, message)
         elif user.state == "awaiting_consent":
+            # answer = await self.detect_consent(message, user.language)
             reply = await self.handle_consent(user, message)
         elif user.state == "awaiting_role":
             # Interim guard: the role step is not built for voice yet (step
@@ -187,108 +191,56 @@ class VoiceOnboarding:
         self, user: User, message: dict
     ) -> dict | list[dict] | None:
         """Transcribe the voice note, detect the language and advance."""
-        result = language_detector(message)
+        # audio_bytes, mime_type = await fetch_voice_note(message["audio"]["id"])
+        # transcription_text = await transcribe_voice_note(audio_bytes, mime_type)
+        # logger.info("Voice transcription for %s: %r", mask_phone(user.phone), transcription_text)
+        # result = await language_detector(transcription_text)
+        # logger.info("Result: %r", result)
 
-        code = result["language"]
-        confidence = result["confidence"]
-        logger.info(
-            "Voice language detection for %s: %s (confidence=%.2f, other=%s)",
-            mask_phone(user.phone),
-            code,
-            confidence,
-            result["detected_other"],
-        )
+        # language = result["language"]
+        # confidence = result["confidence"]
+        # logger.info(
+        #     "Voice language detection for %s: %s (confidence=%.2f, other=%s)",
+        #     mask_phone(user.phone),
+        #     language,
+        #     confidence,
+        #     result["detected_other"],
+        # )
 
-        stored_language = classifier_code_to_stored_language(code)
-        if stored_language and confidence >= LANGUAGE_CONFIDENCE_THRESHOLD:
-            user.language = stored_language
-            user.language_source = "detected"
-            user.language_attempts = 0
-            user.state = "awaiting_consent"
-            await self.storage.save_user(user)
-            return self.consent_prompt(user.language)
-
+        # if language and confidence >= LANGUAGE_CONFIDENCE_THRESHOLD:
+        #     user.language = language
+        #     print("user Language", language) 
+        #     user.language_source = "detected"
+        #     user.language_attempts = 0
+        #     # user.state = "awaiting_consent"
+        #     # await self.storage.save_user(user)
+        #    return await self.consent_prompt(user.phone, user.language)
+        return await self.consent_prompt('09067631070', "hausa")
         return await self.low_confidence(user)
 
     async def handle_consent(
-        self, user: User, message: dict
+        self, user: User, answer: str | None
     ) -> dict | list[dict] | None:
-        """Map the transcript to one consent option and act like the button tap.
+        """Handle a consent answer from the user.
 
-        VOICE_SPEC 6.3: the answer is treated exactly as if the button was
-        tapped, so the stored values match the text flow.
-        # """
-        # result = await self.detect_consent(message, user.language)
-        # option = result["option"]
-        # confidence = result["confidence"]
-        # logger.info(
-        #     "Voice consent mapping for %s: %s (confidence=%.2f)",
-        #     mask_phone(user.phone),
-        #     option,
-        #     confidence,
-        # )
-
-    
-        if message == "consent_yes":
+        Mirrors ``OnboardingStateMachine.handle_consent``: the answer is the
+        normalised reply id (``consent_yes`` / ``consent_no`` /
+        ``consent_read_more``) or ``None`` when the answer is unclear.
+        """
+        if answer == "consent_yes":
             return await self.grant_consent(user)
-        if message == "consent_no":
+        if answer == "consent_no":
             return await self.decline_consent(user)
-        return await self.show_privacy_notice(user)
+        if answer == "consent_read_more":
+            return await self.show_privacy_notice(user)
+        return await self.replay_consent(user)
 
-    async def detect_consent(self, message: dict, language: str | None) -> dict:
-        """Transcribe the voice note, then map it to a consent option.
-
-        Returns the mapping result, or the ``unclear`` fallback when the voice
-        note cannot be fetched or transcribed, which the caller replays. The
-        audio and the transcript are never stored.
-        """
-        media_id = (message.get("audio") or {}).get("id")
-        if not media_id:
-            logger.error("Voice message without a media id; treating it as unclear")
-            return dict(CONSENT_MAPPING_FALLBACK)
-
-        try:
-            audio_bytes, mime_type = await fetch_voice_note(media_id)
-            transcript = await transcribe_voice_note(audio_bytes, mime_type)
-        except Exception as error:  # noqa: BLE001 - never silence the user
-            logger.error(
-                "Voice note %s could not be transcribed: %s", media_id, error
-            )
-            return dict(CONSENT_MAPPING_FALLBACK)
-
-        return await consent_detector(transcript, language)
-
-    async def replay_consent(self, user: User) -> dict | list[dict] | None:
-        """Replay the step with an unclear note before the buttons again.
-
-        After two failed replays, send nothing more and wait for a button tap
-        or a clearer voice note (VOICE_SPEC 6.3).
-        """
-        replays = self._consent_replays.get(user.phone, 0) + 1
-        self._consent_replays[user.phone] = replays
-        if replays > MAX_STEP_REPLAYS:
-            logger.info(
-                "Voice consent unclear %d times for %s; waiting",
-                replays,
-                mask_phone(user.phone),
-            )
-            return None
-        logger.info(
-            "Voice consent unclear for %s; replaying the step (%d/%d)",
-            mask_phone(user.phone),
-            replays,
-            MAX_STEP_REPLAYS,
-        )
-        return [
-            text_message(STEP_REPLAY_UNCLEAR),
-            *self.consent_prompt(user.language),
-        ]
-
-    async def grant_consent(self, user: User) -> list[dict]:
+    async def grant_consent(self, user: User) -> list[dict] | None:
         """Store consent exactly like the text flow's consent_yes, then the role step.
 
-        The role prompt voice note is not built yet (step 3), so the ack is
-        followed by the text flow's role message in the user's language.
+        Sends the pre-generated ``consent_ack`` voice note before the role
+        buttons. If the audio cannot be sent, the ack text is sent as a
+        fallback and the role buttons follow.
         """
         user.consent_status = "granted"
         user.consent_at = datetime.now(timezone.utc)
@@ -297,10 +249,15 @@ class VoiceOnboarding:
         self._consent_replays.pop(user.phone, None)
         await self.storage.save_user(user)
 
-        return [
-            text_message(CONSENT_ACCEPTED_ACK),
-            create_role_message(user.language or INTERIM_SCRIPT_LANGUAGE),
-        ]
+        # sent = await self.audiostore.send_voice_script(
+        #     user.phone, "consent_ack", user.language or INTERIM_SCRIPT_LANGUAGE
+        # )
+        # if not sent:
+        #     return [
+        #         text_message(CONSENT_ACCEPTED_ACK),
+        #         create_role_message(user.language or INTERIM_SCRIPT_LANGUAGE),
+        #     ]
+        return [create_role_message(user.language or INTERIM_SCRIPT_LANGUAGE)]
 
     async def decline_consent(self, user: User) -> dict:
         """Store consent exactly like the text flow's consent_no, then goodbye.
@@ -313,28 +270,48 @@ class VoiceOnboarding:
         user.consent_at = None
         user.consent_version = None
         user.state = "declined"
-        self._consent_replays.pop(user.phone, None)
         await self.storage.save_user(user)
-
-        return text_message(GOODBYE_MESSAGES[INTERIM_SCRIPT_LANGUAGE])
+        sent = await self.audiostore.send_voice_script(
+            user.phone, "goodbye", user.language or INTERIM_SCRIPT_LANGUAGE
+        )
+        if not sent:
+            return text_message(GOODBYE_MESSAGES[user.language or INTERIM_SCRIPT_LANGUAGE])
+        return None
 
     async def show_privacy_notice(self, user: User) -> list[dict]:
-        """Send the fuller notice, then the buttons again (no state change)."""
-        return [
-            text_message(full_privacy_notice(INTERIM_SCRIPT_LANGUAGE)),
-            self.consent_buttons(user.language),
-        ]
+        """Send the fuller privacy-notice voice note, then the buttons again.
 
-    def consent_prompt(self, language: str) -> list[dict]:
-        """Welcome script, then the text flow's consent buttons.
-
-        The welcome script is interim English until the per-language scripts
-        and cached audio exist (VOICE_SPEC 6.4); the buttons are translated.
+        No state change. If the audio cannot be sent, the text privacy notice
+        is sent as a fallback followed by the buttons.
         """
-        return [
-            text_message(get__welcoming_script(INTERIM_SCRIPT_LANGUAGE)),
-            self.consent_buttons(language),
-        ]
+        sent = await self.audiostore.send_voice_script(
+            user.phone, "privacy_notice", user.language or INTERIM_SCRIPT_LANGUAGE
+        )
+        if not sent:
+            return [
+                text_message(full_privacy_notice(user.language or INTERIM_SCRIPT_LANGUAGE)),
+                self.consent_buttons(user.language),
+            ]
+        return [self.consent_buttons(user.language)]
+
+    async def consent_prompt(self, phone: str, language: str) -> list[dict]:
+        """Send the welcome voice note, then the text flow's consent buttons.
+
+        The welcome voice note is sent from the pre-generated audio file for
+        ``welcome_consent`` in the user's language (English fallback when the
+        exact language is missing). The interactive buttons follow the audio,
+        sent by the webhook. If the audio cannot be sent, the welcome text is
+        sent as a fallback so the user is never left in silence.
+        """
+        # sent = await  self.audiostore.send_voice_script(
+        #     phone, "welcome_consent", language
+        # )
+        # if not sent:
+        #     return [
+        #         text_message(get__welcoming_script(language)),
+        #         self.consent_buttons(language),
+        #     ]
+        return self.consent_buttons(language)
 
     def consent_buttons(self, language: str) -> dict:
         """Return the text flow's consent buttons for a stored language.
@@ -355,17 +332,19 @@ class VoiceOnboarding:
             )
             return consent_message(INTERIM_SCRIPT_LANGUAGE)
 
-    # async def detect_language(self, message: dict) -> dict:
-        """Download and transcribe the voice note, then classify its language.
+    async def detect_consent(
+        self, message: dict, language: str | None
+    ) -> str | None:
+        """Transcribe the voice note and classify it into a consent answer.
 
-        Returns the classifier result, or the ``other``/0.0 fallback when the
-        voice note cannot be fetched or transcribed, which the caller treats as
-        low confidence. The audio and the transcript are never stored.
+        Returns ``consent_yes``, ``consent_no``, ``consent_read_more``, or
+        ``None`` when the answer is unclear. The audio and the transcript are
+        never stored.
         """
         media_id = (message.get("audio") or {}).get("id")
         if not media_id:
             logger.error("Voice message without a media id; treating it as unclear")
-            return dict(LANGUAGE_DETECTION_FALLBACK)
+            return None
 
         try:
             audio_bytes, mime_type = await fetch_voice_note(media_id)
@@ -374,28 +353,88 @@ class VoiceOnboarding:
             logger.error(
                 "Voice note %s could not be transcribed: %s", media_id, error
             )
-            return dict(LANGUAGE_DETECTION_FALLBACK)
+            return None
 
-        return await language_detector(transcript)
+        return _detect_consent_answer(transcript, language)
 
-    # async def low_confidence(self, user: User) -> dict | list[dict]:
-    #     """Retry once, then default to Pidgin (VOICE_SPEC 4)."""
-    #     attempts = user.language_attempts or 0
 
-    #     if attempts >= 1:
-    #         # Second failure: default to Pidgin and continue to consent.
-    #         language = LANGUAGES["lang_pcm"]
-    #         user.language = language
-    #         user.language_source = "default_fallback"
-    #         user.language_attempts = 0
-    #         user.state = "awaiting_consent"
-    #         await self.storage.save_user(user)
-    #         return [
-    #             text_message(PIDGIN_DEFAULT_NOTICE),
-    #             *self.consent_prompt(language),
-    #         ]
+def _detect_consent_answer(transcript: str, language: str | None) -> str | None:
+    """Classifier stopgap: map a transcript to a consent answer.
 
-    #     # First failure: ask for another voice note and keep the state.
-    #     user.language_attempts = attempts + 1
-    #     await self.storage.save_user(user)
-    #     return text_message(LOW_CONFIDENCE_RETRY)
+    English-only for now. Returns ``None`` for anything it cannot match so the
+    caller replays the consent step instead of guessing.
+    """
+    lowered = transcript.strip().lower()
+    if not lowered:
+        return None
+
+    # Single-word answers.
+    if lowered in ("yes", "ye", "yeah", "yep", "true", "correct"):
+        return "consent_yes"
+    if lowered == "agree":
+        return "consent_yes"
+    if lowered in ("no", "nah", "nope", "false"):
+        return "consent_no"
+
+    # Multi-word patterns. "not agree" must be checked before bare "agree"
+    # so a transcript like "I don't agree" does not match the bare word.
+    negations = ("don't agree", "do not agree", "doesn't agree", "does not agree")
+    if any(neg in lowered for neg in negations):
+        return "consent_no"
+    if lowered in ("no", "nah", "nope", "false", "not true", "not correct"):
+        return "consent_no"
+    if any(phrase in lowered for phrase in ("tell me more", "read more", "more detail", "i want to read")):
+        return "consent_read_more"
+
+    return None
+
+
+    async def replay_consent(self, user: User) -> dict | list[dict] | None:
+        """Replay the consent step after an unclear answer.
+
+        After ``MAX_STEP_REPLAYS`` failed replays, send nothing more and wait.
+        The welcome voice note is replayed from the pre-generated audio.
+        """
+        replays = self._consent_replays.get(user.phone, 0) + 1
+        self._consent_replays[user.phone] = replays
+        if replays > MAX_STEP_REPLAYS:
+            logger.info(
+                "Voice consent unclear %d times for %s; waiting",
+                replays,
+                mask_phone(user.phone),
+            )
+            return None
+        logger.info(
+            "Voice consent unclear for %s; replaying the step (%d/%d)",
+            mask_phone(user.phone),
+            replays,
+            MAX_STEP_REPLAYS,
+        )
+        return [
+            text_message(STEP_REPLAY_UNCLEAR),
+            *await self.consent_prompt(user.phone, user.language),
+        ]
+
+    async def low_confidence(self, user: User) -> dict | list[dict] | None:
+        """Handle a low-confidence language detection.
+
+        First failure: ask for another voice note. Second failure: default to
+        Pidgin and continue to consent.
+        """
+        attempts = user.language_attempts or 0
+
+        if attempts >= 1:
+            language = LANGUAGES["lang_pcm"]
+            user.language = language
+            user.language_source = "default_fallback"
+            user.language_attempts = 0
+            user.state = "awaiting_consent"
+            await self.storage.save_user(user)
+            return [
+                text_message(PIDGIN_DEFAULT_NOTICE),
+                *await self.consent_prompt(user.phone, language),
+            ]
+
+        user.language_attempts = attempts + 1
+        await self.storage.save_user(user)
+        return text_message(LOW_CONFIDENCE_RETRY)

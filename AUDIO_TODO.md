@@ -16,9 +16,9 @@ Rules for the whole task:
 ## Phase 0: Read first
 
 - [ ] Read `voice/script.py` and `VOICE_SPEC.md` section 7.
-- [ ] Find the existing Spitch TTS code (check the text_to_speech.py file for this ). Note which languages and voices it supports, what it returns (bytes, URL, file), and what audio format it outputs.
+- [ ] Find the existing Spitch TTS code (check the text_to_speech.py file for this there is a function called "text_to_speech" ). Note which languages and voices it supports, what it returns (bytes, URL, file), and what audio format it outputs.
 - [ ] Find the existing WhatsApp send helpers. Note how audio is sent today (upload then send by media ID, or by link).
-- [ ] Find the existing storage layer and the deployment setup. Answer: **does the host keep files on disk between deploys?** (If the app runs on a platform that wipes its disk on each deploy, the audio must go in cloud file storage instead of a local folder.)
+- [ ] Find the existing storage layer and the deployment setup. Answer: store it in my local codebase
 - [ ] Write a short note listing these findings before continuing.
 
 ## Phase 1: Complete the script source
@@ -31,7 +31,7 @@ this has already been done if you go to the voice folder inside the Script.py fi
 
 Create `voice/generate_assets.py`, runnable as `python -m voice.generate_assets`.
 
-- [ ] Loop over every script id and language in `SCRIPTS` and the dynamic scripts from Phase 1.
+- [ ] Loop over every script id and language in `SCRIPTS`(this is inside the voice/script.py) and the dynamic scripts from Phase 1.
 - [ ] For each, build a file name: `{script_id}__{language}__{hash8}.mp3`, where `hash8` is the first 8 characters of a SHA-256 hash of the script text. Changing the text changes the name, so edited scripts are regenerated and unchanged ones are skipped.
 - [ ] If that file already exists, skip it. Print "skipped".
 - [ ] Otherwise call Spitch with the text, language and the voice configured for that language, and save the result as an **mp3** file in the audio folder.

@@ -221,7 +221,7 @@ CONSENST_BUTTONS = {
         "don't save my chats"
     ],
     "yoruba": [
-        "Mo gba pẹ̀lú rẹ̀,i agree",
+        "Mo gba",
         "Kà sí i",
         "Mẹ́ṣọ́ ọ̀rọ̀ mi mọ́"
     ],
