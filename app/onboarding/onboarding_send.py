@@ -90,6 +90,7 @@ def sanitize_interactive(message: dict[str, Any]) -> dict[str, Any]:
     - interactive body text: kept under the 1024 limit by truncation with a
       note when needed.
     """
+    print("sanitize_interactive: : ", message)
     if message.get("type") != "interactive":
         return message
 
@@ -145,6 +146,7 @@ def validate_message(message: dict[str, Any]) -> dict[str, Any]:
     """Run all pre-send interactive/text safety checks on one message payload."""
     message = sanitize_interactive(message)
     message = ensure_text_body_not_empty(message)
+    print("message", message)
     return message
 
 
@@ -208,6 +210,7 @@ async def send_voice_then_messages(
 
     for msg in messages_list:
         safe = validate_message(dict(msg))
+        print("Safe", safe)
         sent = await safe_send_whatsapp(whatsapp, phone, safe, log)
         if not sent:
             log.error(
@@ -319,6 +322,13 @@ def voice_script_for_step(
             return "role_ask"
     if prev_state == "awaiting_role": 
             return "service_menu_prompt"
+    if prev_state == "active":
+        # Main menu choices for an active user: the pre-generated voice note
+        # that plays before the text reply (TODO_new_voice_notes.md).
+        if answer == "crop_detection":
+            return "diagnosis_prompt"
+        if answer in ("market_price", "connect_vendor"):
+            return "feature_coming_soon"
     return None
 
 

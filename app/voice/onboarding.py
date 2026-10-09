@@ -199,6 +199,10 @@ class VoiceOnboarding:
 
         return await self._low_confidence(user)
 
+
+
+
+    
     async def _low_confidence(self, user: User) -> AudioResolution:
         """Handle a language detection we cannot trust (VOICE_SPEC 4).
 

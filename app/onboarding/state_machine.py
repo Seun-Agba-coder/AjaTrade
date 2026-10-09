@@ -33,6 +33,29 @@ from app.onboarding.messages import (
 )
 
 
+def _script_text(script_id: str, language: str | None) -> str:
+    """Source text of a pre-generated voice script in the user's language.
+
+    Falls back to English when the script has no text for that language
+    (same fallback the audio store uses when sending the voice note), so the
+    text version always matches the spoken version.
+    """
+    try:
+        from app.voice.audio_store import default_store
+
+        text = default_store.get_script_text(script_id, language or "english")
+    except Exception:
+        text = None
+    if text:
+        return text
+    from app.voice.scripts import SCRIPTS
+
+    entry = SCRIPTS.get(script_id, {})
+    if isinstance(entry, dict):
+        return str(entry.get("english", ""))
+    return str(entry)
+
+
 class OnboardingStateMachine:
     def __init__(self, storage=None):
         self.storage = storage or default_storage
@@ -77,11 +100,17 @@ class OnboardingStateMachine:
         if user.state == "awaiting_role" :
             return await self.handle_role(user, answer)
 
-        if user.state == "active" :
-            return self.handle_active(user, answer)
-
         if user.state == "declined":
             return await self.handle_declined(user, answer)
+
+        if user.state == "active":
+            print("Active user, answer:", answer)
+            if user.flow:
+                # Inside an open flow: the main AjaTrade pipeline
+                # (handle_message) owns this message. Return nothing so the
+                # webhook hands it over instead of restarting onboarding.
+                return None
+            return await self.handle_active(user, answer)
 
         # Safety fallback: never lock a user out.
         user.state = "new"
@@ -161,13 +190,6 @@ class OnboardingStateMachine:
         if answer in ROLES:
             role = ROLES[answer]
 
-        # # Allow typed numbers.
-        # if role is None and answer == "1":
-        #     role = "farmer"
-        # elif role is None and answer == "2":
-        #     role = "trader"
-        # elif role is None and answer == "3":
-        #     role = "manufacturer"
         if role is None:
             return self.invalid_answer(
                 role_message(language),
@@ -178,9 +200,11 @@ class OnboardingStateMachine:
         user.state = "active"
         await self.storage.save_user(user)
 
-        return [ text_message(
-            "Thanks! The main AjaTrade assistant pipeline will handle "
-            "your message here.") , service_menu(user.language, name=user.preferred_name or user.name)]
+        #  text_message(
+        #     "Thanks! The main AjaTrade assistant pipeline will handle "
+        #     "your message here.") , 
+
+        return [service_menu(user.language, name=user.preferred_name or user.name)]
     async def handle_declined(self, user: User, answer: str | None):
         language = user.language or "en"
 
@@ -200,16 +224,26 @@ class OnboardingStateMachine:
             body["text"] = f"{instruction}\n\n{body.get('text', '')}"
         return question
 
-    def handle_active(self, user: User, message: dict):
-        """Placeholder for the main AjaTrade pipeline."""
-        if message == "crop_detection":
-            return text_message("Please send a photo or voice note of your crop problem, and we will diagnose it for you.")
-        elif message == "market_price":
-            return text_message("Please send the name of the crop you want to check the market price for, and we will provide you with today's market price.")
-        elif message == "connect_vendor":
-            return text_message("Please send the name of the fertilizer or herbicide you are looking for, and we will help you find a vendor.")
+    async def handle_active(self, user: User, answer: str | None):
+        """Handle a main-menu choice from an active user with no open flow.
 
-  
+        Option 1 (crop_detection) starts the crop-detection flow. Options
+        whose feature is not built yet (market_price, connect_vendor) must
+        not start any flow and must keep the user's state unchanged, so they
+        can pick another option or send a new message. Any other answer is
+        an ordinary message and is left to the main pipeline (returns None).
+        """
+        if answer == "crop_detection":
+            user.flow = "crop_detection"
+            await self.storage.save_user(user)
+            return text_message(_script_text("diagnosis_prompt", user.language))
+
+        if answer in ("market_price", "connect_vendor"):
+            # Feature not built yet: no flow, no state change.
+            return text_message(_script_text("feature_coming_soon", user.language))
+
+        return None
+
     def normalize_input(self, message: dict) -> str | None:
         """Return the meaningful answer from a WhatsApp message: an interactive
         reply ID, an ordinary text body, or a typed number."""

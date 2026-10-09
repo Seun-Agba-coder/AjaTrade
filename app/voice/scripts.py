@@ -116,6 +116,42 @@ SERVICE_MENU_PROMPT = {
     "yoruba": "Pẹlẹ o, emi ni AjaTrade. Bawo ni mo ṣe le ràn ọ́ lọ́wọ́ lónìí? Tẹ ọkan fún pípèṣè ìṣòro irúgbìn wò, tẹ èjì fún wíwò iye ọjà t'òní, tẹ ẹ̀ta fún wíwá olùtà ajílẹ̀ tàbí egbògi, tàbí tẹ ẹ̀rin fún bíbá ènìyàn gidi sọ̀rọ̀."
   }
  
+# Menu option 1 (crop diagnosis): sent when the user picks it from the service
+# menu (TODO_new_voice_notes.md).
+# REVIEW: a native speaker should verify this wording before launch.
+DIAGNOSIS_PROMPT = {
+    "english": (
+        "Please send a photo or voice note of your crop problem, "
+        "and we will diagnose it for you."
+    ),
+    "yoruba": "Jọwọ fi fọto tabi akọsilẹ ohun ranṣẹ ti ìṣòro ọgbìn rẹ, a yoo ṣe àyẹ̀wò fún ọ.",
+    "hausa": "Da fatan a aika da hoto ko saƙon murya na matsalar amfanin gona, kuma za mu tantance ta a gare ku.",
+    "igbo": "Biko zipụ foto ma ọ bụ ndekọ olu nke nsogbu mkpụrụ osisi gị, anyị ga-enyocha ya maka gị.",
+    "pidgin": "Abeg send photo or voice note of your crop problem, we go diagnose am for you.",
+}
+
+# Sent once per request when a photo or voice note arrives and processing
+# starts, so slow work never leaves the user in silence.
+# REVIEW: a native speaker should verify this wording before launch.
+PLEASE_WAIT = {
+    "english": "Please, wait. The response might take some time.",
+    "yoruba": "Jọwọ, duro. Idahun le gba akoko diẹ.",
+    "hausa": "Don Allah, jira. Amsa na iya ɗaukar lokaci.",
+    "igbo": "Biko, chere. Azịza nwere ike were oge ụfọdụ.",
+    "pidgin": "Abeg, wait. The response fit take some time.",
+}
+
+# Sent when the user picks a main menu option whose feature is not built yet
+# (market_price, connect_vendor). No flow is started; state is unchanged.
+# REVIEW: a native speaker should verify this wording before launch.
+FEATURE_COMING_SOON = {
+    "english": "This feature will be added in the nearest future.",
+    "yoruba": "Àfikún yìí yóò fi kun ní ọjọ́ tó sunmọ̀.",
+    "hausa": "Za a ƙara wannan fasalin a nan gaba.",
+    "igbo": "Atụmatụ ọhụrụ a ga-etinye n'oge na-adịghị anya.",
+    "pidgin": "This feature go be added for the nearest future.",
+}
+
 # Sent after consent_yes before the role step starts (VOICE_SPEC section 7).
 CONSENT_ACCEPTED_ACK = (
     "Thank you. We will save your chat and your phone number."
@@ -138,6 +174,9 @@ SCRIPTS = {
     "welcome_consent": WELCOME_CONSENT,
     "role_ask": ROLE_ASK,
     "service_menu_prompt": SERVICE_MENU_PROMPT,
+    "diagnosis_prompt": DIAGNOSIS_PROMPT,
+    "please_wait": PLEASE_WAIT,
+    "feature_coming_soon": FEATURE_COMING_SOON,
     "consent_ack": {"english": CONSENT_ACCEPTED_ACK},
     "goodbye": GOODBYE_MESSAGES,
     "privacy_notice": {

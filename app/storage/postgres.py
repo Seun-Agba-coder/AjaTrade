@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+from datetime import datetime, timezone
 from typing import Awaitable, Callable, Optional, TypeVar
 
 from sqlalchemy import func, select, text
@@ -28,7 +29,14 @@ from sqlalchemy.ext.asyncio import (
 
 from app.schemas.chat import ChatMessage
 from app.schemas.memory import User
-from app.storage.models import Base, MessageRow, UserRow
+from app.storage.models import (
+    Base,
+    ConversationMemoryRow,
+    DiagnosisLogRow,
+    MessageRow,
+    UserRow,
+    OpenCase,
+)
 
 
 logger = logging.getLogger("storage")
@@ -137,6 +145,68 @@ class PostgresStorage:
             await conn.run_sync(Base.metadata.create_all)
         logger.info("Tables ready: %s", list(Base.metadata.tables.keys()))
 
+    async def set_conversation_memory(self, wa_id: str, summary: str) -> None:
+        """Insert or replace the rolling summary for a user."""
+
+        async def operation(session: AsyncSession) -> None:
+            row = ConversationMemoryRow(wa_id=wa_id, summary=summary)
+            await session.merge(row)
+            await session.commit()
+
+        await self._execute(operation)
+
+    async def get_conversation_memory(self, wa_id: str) -> str | None:
+        """Return the stored summary for a user, or ``None``."""
+
+        async def operation(session: AsyncSession) -> str | None:
+            result = await session.execute(
+                select(ConversationMemoryRow.summary).where(
+                    ConversationMemoryRow.wa_id == wa_id
+                )
+            )
+            return result.scalar_one_or_none()
+
+        return await self._execute(operation)
+
+    async def log_diagnosis(
+        self,
+        case_id: UUID | None,
+        wa_id: str,
+        source: str,
+        model_name: str | None,
+        photo_ref: str | None,
+        raw_output: str | None,
+        crop: str | None,
+        diagnosis_name: str | None,
+        category: str | None,
+        confidence: str | None,
+        flags: list[str],
+        reply_text_en: str | None,
+        confirmed_diagnosis: str | None = None,
+    ) -> None:
+        """Insert one diagnosis-log row (only reached for consented users)."""
+
+        async def operation(session: AsyncSession) -> None:
+            row = DiagnosisLogRow(
+                case_id=case_id,
+                wa_id=wa_id,
+                source=source,
+                model_name=model_name,
+                photo_ref=photo_ref,
+                raw_output=raw_output,
+                crop=crop,
+                diagnosis_name=diagnosis_name,
+                category=category,
+                confidence=confidence,
+                flags=list(flags),
+                reply_text_en=reply_text_en,
+                confirmed_diagnosis=confirmed_diagnosis,
+            )
+            session.add(row)
+            await session.commit()
+
+        await self._execute(operation)
+
     async def close(self) -> None:
         """Dispose of the engine and its pool."""
         if self._engine is not None:
@@ -192,6 +262,7 @@ class PostgresStorage:
                 "language_source": user.language_source,
                 "language_attempts": user.language_attempts,
                 "role": user.role,
+                "onboarding": user.onboarding,
                 "consent_status": user.consent_status,
                 "consent_at": user.consent_at,
                 "consent_version": user.consent_version,
@@ -215,6 +286,25 @@ class PostgresStorage:
 
         await self._execute(operation)
 
+    async def message_seen(self, wa_message_id: str) -> bool:
+        """Return ``True`` when a WhatsApp message id has already been stored.
+
+        This is the durable dedupe check that survives restarts (VOICE_NOTE.md
+        section 4, rule 1). The in-memory dedupe in ``onboarding_send`` is still
+        the first line of defence inside a single process; this is the backup for
+        retries that arrive after a restart or on a different worker.
+        """
+        if not wa_message_id:
+            return False
+
+        async def operation(session: AsyncSession) -> bool:
+            result = await session.execute(
+                select(MessageRow.id).where(MessageRow.wa_message_id == wa_message_id)
+            )
+            return result.scalar_one_or_none() is not None
+
+        return await self._execute(operation)
+
     async def save_message(self, message: ChatMessage) -> None:
         """Insert one chat-history row.
 
@@ -232,6 +322,8 @@ class PostgresStorage:
                 text=message.text,
                 language=message.language,
                 intent=message.intent,
+                media_ref=message.media_ref,
+                case_id=message.case_id,
             )
             session.add(row)
             try:
@@ -251,6 +343,68 @@ class PostgresStorage:
         """Return the user's role."""
         user = await self.get_user(phone)
         return user.role if user else None
+
+    async def set_user_last_activity(self, phone: str) -> None:
+        """Update ``last_seen_at`` and, when a case is open, ``last_activity_at``."""
+        user = await self.get_user(phone)
+        if user is None:
+            return
+        user.last_seen_at = datetime.now(timezone.utc)
+        if user.current_case_id is not None:
+            user.last_activity_at = datetime.now(timezone.utc)
+        await self.save_user(user)
+
+    async def get_case(self, phone: str) -> OpenCase:
+        """Return the current crop-diagnosis case state for a user, or an empty one."""
+        user = await self.get_user(phone)
+        if user is None:
+            return OpenCase.empty()
+        return OpenCase(
+            flow=user.flow,
+            step=user.step,
+            current_case_id=user.current_case_id,
+            case_started_at=user.case_started_at,
+            last_activity_at=user.last_activity_at,
+            case_crop=user.case_crop,
+            case_part=user.case_part,
+            case_symptoms=list(user.case_symptoms or []),
+            questions_asked=user.questions_asked,
+            diagnoses_in_case=user.diagnoses_in_case,
+        )
+
+    async def set_case(self, phone: str, case: OpenCase) -> None:
+        """Persist the open-case fields back onto the user row."""
+        user = await self.get_user(phone)
+        if user is None:
+            return
+        user.flow = case.flow
+        user.step = case.step
+        user.current_case_id = case.current_case_id
+        user.case_started_at = case.case_started_at
+        user.last_activity_at = case.last_activity_at
+        user.case_crop = case.case_crop
+        user.case_part = case.case_part
+        user.case_symptoms = list(case.case_symptoms)
+        user.questions_asked = case.questions_asked
+        user.diagnoses_in_case = case.diagnoses_in_case
+        await self.save_user(user)
+
+    async def close_case(self, phone: str) -> None:
+        """Clear all open-case fields on the user row."""
+        user = await self.get_user(phone)
+        if user is None:
+            return
+        user.flow = None
+        user.step = None
+        user.current_case_id = None
+        user.case_started_at = None
+        user.last_activity_at = None
+        user.case_crop = None
+        user.case_part = None
+        user.case_symptoms = []
+        user.questions_asked = 0
+        user.diagnoses_in_case = 0
+        await self.save_user(user)
 
 
 storage = PostgresStorage()

@@ -130,5 +130,71 @@
       "file": "privacy_notice__pidgin__0973379b.mp3",
       "hash": "0973379b"
     }
+  },
+  "diagnosis_prompt": {
+    "english": {
+      "file": "diagnosis_prompt__english__fe246d03.mp3",
+      "hash": "fe246d03"
+    },
+    "hausa": {
+      "file": "diagnosis_prompt__hausa__1370fa4f.mp3",
+      "hash": "1370fa4f"
+    },
+    "igbo": {
+      "file": "diagnosis_prompt__igbo__45adcf38.mp3",
+      "hash": "45adcf38"
+    },
+    "yoruba": {
+      "file": "diagnosis_prompt__yoruba__abb37de6.mp3",
+      "hash": "abb37de6"
+    },
+    "pidgin": {
+      "file": "diagnosis_prompt__pidgin__04991e65.mp3",
+      "hash": "04991e65"
+    }
+  },
+  "please_wait": {
+    "english": {
+      "file": "please_wait__english__e5380de8.mp3",
+      "hash": "e5380de8"
+    },
+    "hausa": {
+      "file": "please_wait__hausa__b77b4c88.mp3",
+      "hash": "b77b4c88"
+    },
+    "igbo": {
+      "file": "please_wait__igbo__3ea3d8bb.mp3",
+      "hash": "3ea3d8bb"
+    },
+    "yoruba": {
+      "file": "please_wait__yoruba__b25ee9fc.mp3",
+      "hash": "b25ee9fc"
+    },
+    "pidgin": {
+      "file": "please_wait__pidgin__1bb1c19f.mp3",
+      "hash": "1bb1c19f"
+    }
+  },
+  "feature_coming_soon": {
+    "english": {
+      "file": "feature_coming_soon__english__20b9ab95.mp3",
+      "hash": "20b9ab95"
+    },
+    "hausa": {
+      "file": "feature_coming_soon__hausa__b82dc493.mp3",
+      "hash": "b82dc493"
+    },
+    "igbo": {
+      "file": "feature_coming_soon__igbo__9eb66dab.mp3",
+      "hash": "9eb66dab"
+    },
+    "yoruba": {
+      "file": "feature_coming_soon__yoruba__b41a69d4.mp3",
+      "hash": "b41a69d4"
+    },
+    "pidgin": {
+      "file": "feature_coming_soon__pidgin__3abe04b0.mp3",
+      "hash": "3abe04b0"
+    }
   }
 }

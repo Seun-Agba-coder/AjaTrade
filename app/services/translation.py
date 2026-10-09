@@ -16,7 +16,7 @@ client = AsyncGroq(api_key=os.getenv("GROQ_API_KEY"))
 # "openai/gpt-oss-120b" is the stronger model (better for Yoruba/Hausa/Igbo/Pidgin).
 # "openai/gpt-oss-20b" is faster and cheaper. Switch here, or set GROQ_MODEL in .env.
 # MODEL = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
-MODEL = "qwen/qwen3.8-27b"
+MODEL = "openai/gpt-oss-20b"
 
 # gpt-oss models reason before answering. "low" keeps latency down for translation.
 REASONING_EFFORT = "high"

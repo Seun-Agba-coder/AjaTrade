@@ -72,12 +72,17 @@ async def record_message(
     wa_message_id: str | None = None,
     language: str | None = None,
     intent: str | None = None,
+    media_ref: str | None = None,
+    case_id: Any = None,
     user: User | None = None,
 ) -> None:
     """Save one message when the user has consented. Never raises.
 
     When ``user`` is not supplied it is looked up, so the consent decision is
     always made against the latest stored status rather than a stale object.
+
+    ``media_ref`` is the WhatsApp media id for an image message (temporary).
+    ``case_id`` links a message to an open crop-detection case.
     """
     try:
         if user is None:
@@ -93,6 +98,8 @@ async def record_message(
                 wa_message_id=wa_message_id,
                 language=language or user.language,
                 intent=intent,
+                media_ref=media_ref,
+                case_id=case_id,
             )
         )
     except StorageUnavailableError as error:

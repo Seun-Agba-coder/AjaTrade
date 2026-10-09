@@ -16,6 +16,7 @@ logic applies on the next cold start.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
@@ -45,6 +46,11 @@ MEDIA_ID_TTL_SECONDS = 25 * 24 * 60 * 60  # 25 days
 
 # How many times to try uploading a file before falling back to text.
 MAX_UPLOAD_ATTEMPTS = 2
+
+# Cap for the generate-on-miss path (TODO_new_voice_notes.md step 4): one TTS
+# call is 20 s with two retries, so this covers it and still reaches the text
+# fallback quickly enough that the user is never left waiting in silence.
+GENERATE_TIMEOUT_SECONDS = 45.0
 
 # Config flag for the onboarding audio format. ``mp3`` for now; switching
 # to ``ogg`` later only needs a config change and a regeneration run.
@@ -158,6 +164,11 @@ class AudioStore:
         """
         fpath = self.get_audio_file(script_id, language)
         if fpath is None:
+            # Cached file missing: log it, generate it once, save it and send
+            # it (TODO_new_voice_notes.md step 4). On any failure we fall
+            # through to the text fallback below.
+            fpath = await self._generate_missing(script_id, language)
+        if fpath is None:
             text = self.get_script_text(script_id, language)
             if text:
                 logger.error(
@@ -241,6 +252,77 @@ class AudioStore:
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
+
+    async def _generate_missing(self, script_id: str, language: str) -> Path | None:
+        """Generate a missing audio file once, save it, and return its path.
+
+        Used when the manifest has no entry for *script_id* / *language* or
+        the file it points to is gone. Returns ``None`` on any failure so
+        the caller can fall back to text; the user is never left in silence.
+        """
+        from app.voice.generate_assets import (
+            generate_one,
+            get_text_for_script,
+            load_manifest,
+            save_manifest,
+            sha256_hex8,
+        )
+
+        language = audio_language(language)
+        text = get_text_for_script(script_id, language) or self.get_script_text(
+            script_id, language
+        )
+        if not text:
+            logger.error(
+                "Cannot generate missing audio for %s / %s: no script text",
+                script_id,
+                language,
+            )
+            return None
+
+        logger.warning(
+            "Missing audio for %s / %s; generating it now", script_id, language
+        )
+        try:
+            result = await asyncio.wait_for(
+                generate_one(script_id, language, text, force=False),
+                timeout=GENERATE_TIMEOUT_SECONDS,
+            )
+        except Exception as error:  # noqa: BLE001 - fall back to text
+            logger.error(
+                "Could not generate missing audio for %s / %s: %s",
+                script_id,
+                language,
+                error,
+            )
+            return None
+
+        if result.get("status") not in ("generated", "skipped") or not result.get("file"):
+            logger.error(
+                "Generating missing audio for %s / %s failed: %s",
+                script_id,
+                language,
+                result.get("reason", "unknown"),
+            )
+            return None
+
+        # Register the file in the manifest and refresh this store's copy.
+        try:
+            manifest = load_manifest()
+            manifest.setdefault(script_id, {})[language] = {
+                "file": result["file"],
+                "hash": sha256_hex8(text),
+            }
+            save_manifest(manifest)
+            self.refresh_manifest()
+        except Exception as error:  # noqa: BLE001 - the file exists regardless
+            logger.warning(
+                "Could not update manifest for %s / %s: %s",
+                script_id,
+                language,
+                error,
+            )
+        return self.get_audio_file(script_id, language)
 
     def _get_cached_media_id(self, script_id: str, language: str) -> str | None:
         cached = self._media_id_cache.get((script_id, language))

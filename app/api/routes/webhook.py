@@ -122,16 +122,20 @@ async def receive_webhook(
     message_id = message.get("id")
     is_audio = message.get("type") == "audio"
 
+    seen = mark_seen(message_id)
+
     # Dedupe by WhatsApp message id so a Meta retry cannot send a voice note
     # twice and cannot re-run onboarding for the same inbound message.
-    if not mark_seen(message_id):
+    if not seen:
         logger.info(
             "Duplicate webhook message %s from %s; ignoring",
             message_id,
             mask_phone(phone),
         )
-        return {"status": "received"}
+        return {"status": "received"} 
 
+
+    
     try:
         user = await onboarding.get_or_create_user(phone, name)
     except StorageUnavailableError as error:
@@ -140,6 +144,7 @@ async def receive_webhook(
         return {"status": "received"}
 
     prev_state = user.state
+    
 
     # Track the onboarding message (text or a button/list reply), but only if
     # the user has consented. Runs after the 200, and a storage failure only
