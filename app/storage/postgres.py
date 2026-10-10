@@ -34,6 +34,7 @@ from app.storage.models import (
     ConversationMemoryRow,
     DiagnosisLogRow,
     MessageRow,
+    ProcessedMessageRow,
     UserRow,
     OpenCase,
 )
@@ -44,6 +45,10 @@ logger = logging.getLogger("storage")
 CONNECT_TIMEOUT_SECONDS = 5.0
 QUERY_TIMEOUT_SECONDS = 5.0
 RETRY_DELAY_SECONDS = 0.2
+
+# Inbound webhook message ids only need to be remembered for as long as Meta
+# might retry or replay a delivery, so older dedup rows are purged.
+PROCESSED_MESSAGE_RETENTION_DAYS = 7
 
 T = TypeVar("T")
 
@@ -87,6 +92,16 @@ def _row_to_user(row: UserRow) -> User:
         consent_version=row.consent_version,
         created_at=row.created_at,
         last_seen_at=row.last_seen_at,
+        onboarding=row.onboarding,
+        flow=row.flow,
+        step=row.step,
+        current_case_id=row.current_case_id,
+        last_activity_at=row.last_activity_at,
+        case_crop=row.case_crop,
+        case_part=row.case_part, 
+        case_symptoms=row.case_symptoms, 
+        questions_asked=row.questions_asked, 
+        diagnoses_in_case=row.diagnoses_in_case
     )
 
 
@@ -266,6 +281,16 @@ class PostgresStorage:
                 "consent_status": user.consent_status,
                 "consent_at": user.consent_at,
                 "consent_version": user.consent_version,
+                "flow": user.flow, 
+                "step": user.step,
+                "current_case_id": user.current_case_id, 
+                "case_started_at": user.case_started_at, 
+                "last_activity_at": user.last_activity_at, 
+                "case_crop": user.case_crop, 
+                "case_part": user.case_part, 
+                "case_symptoms": user.case_symptoms, 
+                "questions_asked": user.questions_asked, 
+                "diagnoses_in_case": user.diagnoses_in_case
             }
             update_values = {
                 key: value
@@ -285,6 +310,56 @@ class PostgresStorage:
             await session.commit()
 
         await self._execute(operation)
+
+    async def mark_seen(self, message_id: str, wa_id: str | None = None) -> bool:
+        """Record an inbound WhatsApp message id and report whether it is new.
+
+        Returns ``True`` when this is the first time the id is seen and
+        ``False`` for a duplicate. The primary key on ``message_id`` plus
+        ``ON CONFLICT DO NOTHING`` is what makes this safe when two deliveries
+        of the same id arrive at the same instant: the database decides, not
+        Python. Raises :class:`StorageUnavailableError` when the database is
+        unreachable; the caller decides what a failure means.
+        """
+        if not message_id:
+            return True
+
+        async def operation(session: AsyncSession) -> bool:
+            statement = (
+                pg_insert(ProcessedMessageRow)
+                .values(message_id=message_id, wa_id=wa_id)
+                .on_conflict_do_nothing(index_elements=["message_id"])
+                .returning(ProcessedMessageRow.message_id)
+            )
+            result = await session.execute(statement)
+            await session.commit()
+            # A returned row means we inserted it: this id is new.
+            return result.scalar_one_or_none() is not None
+
+        return await self._execute(operation)
+
+    async def purge_old_processed_messages(self) -> None:
+        """Delete dedup rows older than the retention window. Never raises.
+
+        Called once at startup and then once a day (see ``app.main``). A
+        cleanup failure is logged and swallowed so it can never stop the app
+        from starting or kill the daily sweep.
+        """
+        try:
+
+            async def operation(session: AsyncSession) -> None:
+                await session.execute(
+                    text(
+                        "DELETE FROM processed_messages "
+                        "WHERE received_at < now() - interval "
+                        f"'{PROCESSED_MESSAGE_RETENTION_DAYS} days'"
+                    )
+                )
+                await session.commit()
+
+            await self._execute(operation)
+        except Exception:  # noqa: BLE001 - cleanup must never break the app
+            logger.exception("Could not purge old processed_messages rows")
 
     async def message_seen(self, wa_message_id: str) -> bool:
         """Return ``True`` when a WhatsApp message id has already been stored.

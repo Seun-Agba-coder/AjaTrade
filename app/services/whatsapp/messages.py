@@ -230,6 +230,7 @@ async def handle_message(message: Message, contact_name: str | None) -> None:
                 sender,
                 "voice",
                 translated_farmer_message,
+                wa_message_id=message.id,
                 user=user,
             )
         else:
@@ -311,7 +312,7 @@ async def _send_routed_reply(
                     mask_phone(phone),
                     sent,
                 )
-                await _save_inbound(phone, "voice", translated, user=user)
+                # await _save_inbound(phone, "voice", translated, user=user)
             else:
                 sent = await send_text(phone, translated)
                 logger.info(

@@ -9,6 +9,7 @@ from app.storage.models import (
     ConversationMemoryRow,
     DiagnosisLogRow,
     MessageRow,
+    ProcessedMessageRow,
     UserRow,
     OpenCase,
     UserFlow,
@@ -18,6 +19,7 @@ from app.storage.models import (
     TEXT_MODEL_NAME,
 )
 from app.storage.postgres import (
+    PROCESSED_MESSAGE_RETENTION_DAYS,
     PostgresStorage,
     StorageUnavailableError,
     mask_phone,
@@ -29,6 +31,7 @@ __all__ = [
     "ConversationMemoryRow",
     "DiagnosisLogRow",
     "MessageRow",
+    "ProcessedMessageRow",
     "UserRow",
     "OpenCase",
     "UserFlow",
@@ -37,6 +40,7 @@ __all__ = [
     "VISION_MODEL_NAME",
     "TEXT_MODEL_NAME",
     "PostgresStorage",
+    "PROCESSED_MESSAGE_RETENTION_DAYS",
     "StorageUnavailableError",
     "mask_phone",
     "storage",

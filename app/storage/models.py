@@ -290,3 +290,28 @@ class DiagnosisLogRow(Base):
     flags: Mapped[list[str]] = mapped_column(JSONB, nullable=False, server_default=text(" '[]'::jsonb"), default=list)
     reply_text_en: Mapped[str | None] = mapped_column(Text, nullable=True)
     confirmed_diagnosis: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class ProcessedMessageRow(Base):
+    """One deduplicated inbound webhook message id.
+
+    WhatsApp message ids only need to be remembered for as long as Meta might
+    retry or replay a delivery, so old rows are purged after
+    ``PROCESSED_MESSAGE_RETENTION_DAYS`` (see ``app.storage.postgres``).
+
+    ``wa_id`` is the sender's number in the same format the ``users`` table
+    uses, with no foreign key: dedup runs before the user row is created.
+
+    ``received_at`` is indexed because the retention cleanup deletes by it.
+    """
+
+    __tablename__ = "processed_messages"
+    __table_args__ = (
+        Index("ix_processed_messages_received_at", "received_at"),
+    )
+
+    message_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    wa_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    received_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )

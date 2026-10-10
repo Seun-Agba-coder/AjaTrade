@@ -103,19 +103,19 @@ class OnboardingStateMachine:
         if user.state == "declined":
             return await self.handle_declined(user, answer)
 
-        if user.state == "active":
+        if user.state == "active" and bool(user.onboarding) == False:
             print("Active user, answer:", answer)
-            if user.flow:
+            if str(user.flow) in ("crop_detection", "market_price", "connect_vendor") :
                 # Inside an open flow: the main AjaTrade pipeline
                 # (handle_message) owns this message. Return nothing so the
                 # webhook hands it over instead of restarting onboarding.
                 return None
             return await self.handle_active(user, answer)
 
-        # Safety fallback: never lock a user out.
-        user.state = "new"
-        await self.storage.save_user(user)
-        return language_question()
+        # # Safety fallback: never lock a user out.
+        # user.state = "new"
+        # await self.storage.save_user(user)
+        return None
 
     async def handle_new(self, user: User):
         # The first message always starts with the language list.
@@ -233,9 +233,11 @@ class OnboardingStateMachine:
         can pick another option or send a new message. Any other answer is
         an ordinary message and is left to the main pipeline (returns None).
         """
+        print("Inside teh handle_active, answer:", answer)
+        user.onboarding = True
+        user.flow = answer
+        await self.storage.save_user(user)
         if answer == "crop_detection":
-            user.flow = "crop_detection"
-            await self.storage.save_user(user)
             return text_message(_script_text("diagnosis_prompt", user.language))
 
         if answer in ("market_price", "connect_vendor"):

@@ -122,7 +122,7 @@ async def receive_webhook(
     message_id = message.get("id")
     is_audio = message.get("type") == "audio"
 
-    seen = mark_seen(message_id)
+    seen = await mark_seen(message_id, phone)
 
     # Dedupe by WhatsApp message id so a Meta retry cannot send a voice note
     # twice and cannot re-run onboarding for the same inbound message.
@@ -186,7 +186,11 @@ async def receive_webhook(
             else:
                 inbound = message
             reply = await onboarding.process(phone, inbound, name)
-            response = prefix + _as_list(reply)
+            if reply is not None: 
+                response = prefix + _as_list(reply)
+            else: 
+                print("We are here")
+                response = None
     except StorageUnavailableError as error:
         logger.error("Storage unavailable for %s: %s", mask_phone(phone), error)
         await _send_fallback(phone, STORAGE_FALLBACK_MESSAGE)
@@ -199,6 +203,7 @@ async def receive_webhook(
     if response:
         # Voice note first, then the text / interactive messages. The helper
         # awaits the voice send and never lets it block the text path.
+
         language = LANGUAGES.get(answer) or user.language
         script_id = voice_override or voice_script_for_step(prev_state, answer)
         await send_voice_then_messages(
@@ -222,7 +227,11 @@ async def receive_webhook(
 
     # An active user's ordinary message has no onboarding reply; hand it to the
     # main AjaTrade pipeline in the background.
-    if prev_state == "active":
+    print("We are not here")
+    print("user_onboarding", user.onboarding)
+    print(type(user.onboarding))
+    if bool(user.onboarding) == True:
+        logger.info("Onboarding Complete")
         payload = WebhookPayload.model_validate(payload_json)
         for entry in payload.entry:
             for change in entry.changes:

@@ -5,7 +5,7 @@ rule from the combined onboarding spec, so neither the voice nor the text flow
 copies that step logic.
 
 It also owns:
-- in-memory dedupe of WhatsApp message ids for the current process lifetime,
+- durable dedupe of WhatsApp message ids (Postgres; survives restarts),
 - webhook-safe sending through the WhatsApp service,
 - safe interactive-title handling via the WhatsApp helpers.
 """
@@ -31,32 +31,29 @@ from app.services.whatsapp.helpers import (
     validate_interactive_payload,
 )
 from app.services.whatsapp_onboarding import WhatsAppService
+from app.storage import storage
 
 logger = logging.getLogger("onboarding.send")
 
-# In-memory dedupe for the lifetime of this process. A Meta retry for the same
-# message id must not send a second reply.
-_seen_message_ids: set[str] = set()
 
-
-def mark_seen(message_id: str) -> bool:
-    """Record a message id as seen.
+async def mark_seen(message_id: str, wa_id: str | None = None) -> bool:
+    """Record a message id as seen, durably, in Postgres.
 
     Returns True when this is the first time we have seen the id.
+
+    The insert is atomic (primary key + ON CONFLICT DO NOTHING), so the
+    database decides the winner when two deliveries of the same id arrive at
+    the same instant, and the answer survives a restart. Any database failure
+    is logged and treated as "first time", so a user's message is never
+    dropped because dedup was unavailable.
     """
     if not message_id:
         return True
-    if message_id in _seen_message_ids:
-        return False
-    _seen_message_ids.add(message_id)
-    return True
-
-
-def is_seen(message_id: str) -> bool:
-    """Return True when a message id has already been processed."""
-    if not message_id:
-        return False
-    return message_id in _seen_message_ids
+    try:
+        return await storage.mark_seen(message_id, wa_id)
+    except Exception:  # noqa: BLE001 - dedup must never drop a message
+        logger.exception("Dedup insert failed for message %s", message_id)
+        return True
 
 
 async def safe_send_whatsapp(

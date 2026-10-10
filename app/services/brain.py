@@ -40,9 +40,9 @@ from app.storage import (
     storage,
 )
 from app.storage.models import TEXT_MODEL_NAME as _TEXT_MODEL_NAME
+from app.onboarding.messages import service_menu
 from app.services.diagnoses import reply as reply_mod
-from app.services.diagnoses.reply import Reply, build_reply, MAX_WORDS, _build_fallback
-
+from app.services.diagnoses.reply import Reply, build_reply, MAX_WORDS, _build_fallback, MSG, parse_model_output
 logger = logging.getLogger("brain")
 
 # ---------------------------------------------------------------------------
@@ -181,9 +181,12 @@ RULES
    dose, or spray schedule.
 5. Use the past summary only for context, for example the farmer's crops and
    location. Never treat a past problem as the current diagnosis.
-6. farmer_message: simple English, short sentences, under 60 words, no
-   jargon, natural when read aloud. Do not mention photos; the system adds
-   that.
+6. farmer_message: simple English, short sentences, under 70 words, no
+   jargon, natural when read aloud. When you diagnose, always end the
+   message with this exact sentence: "If you want us to confirm it well,
+   you could send us a picture." Do not mention pictures or photos
+   anywhere else in the message.
+
 7. extracted: only facts the farmer actually said. Use null if unknown.
 8. Output ONLY the JSON object below. No markdown, no code fences.
 
@@ -214,7 +217,8 @@ JSON SCHEMA
 
 def _parse_text_model_output(raw: str) -> dict[str, Any] | None:
     """Parse the text model's JSON reply defensively."""
-    data = build_reply.parse_model_output(raw)
+    data = build_reply(raw)
+    print("data:: , in parse_text_model_output: : ", data)
     if data is None:
         return None
     action = str(data.get("action") or "").strip().lower()
@@ -395,6 +399,9 @@ async def route_message(user: User, english_text: str, media_ref: str | None = N
 
     case = await storage.get_case(user.phone)
 
+
+    print("case",case)
+
     # 1. Expiry check (section 4, rule 3): lazy, on next message.
     if case.has_case and _case_expired(case):
         logger.info("Case expired for %s; closing", user.phone)
@@ -409,6 +416,9 @@ async def route_message(user: User, english_text: str, media_ref: str | None = N
 
     # 2. Route by type of incoming message & flow.
     if user_flow == UserFlow.CROP_DETECTION:
+        case.current_case_id=new_case_id()
+        case.case_started_at=datetime.now(timezone.utc)
+        case.last_activity_at=datetime.now(timezone.utc)
         return await _route_crop_detection_case(user, case, english_text, media_ref)
 
     # No open crop-detection flow: classify intent.
@@ -421,6 +431,15 @@ async def route_message(user: User, english_text: str, media_ref: str | None = N
 
     if intent in {"market_price", "connect_vendor"}:
         return _stub_service_reply(intent)
+
+    if intent == "unclear":
+        return RoutedReply(
+        messages=[_voice_payload("We only deal with crop detection, checking of market prices and finding a vendor," \
+        " click one to diagnose your crip, two to check market price for goods, and three to find a vendor for(Herbicide or fertilizer)", user.language), service_menu(user.language) ],
+        english_text="We only deal with crop detection, checking of market prices and finding a vendor," \
+        " click one to diagnose your crip, two to check market price for goods, and three to find a vendor for(Herbicide or fertilizer)",
+        close_case=False,
+    )
 
     # greeting or unclear -> welcome-back + menu.
     return _welcome_back_and_menu(user)
@@ -491,10 +510,13 @@ async def _route_crop_detection_case(
     """Continue an open crop-detection case."""
     # Update case with the new message's extracted facts.
     model_output = await _text_model_turn(user, case, english_text)
+    print("Model_output: ;", type(model_output))
     extracted = model_output.get("extracted") if isinstance(model_output, dict) else None
+    print("extracted: ", extracted)
     case = _merge_extracted(case, extracted)
 
     action = model_output.get("action") if isinstance(model_output, dict) else "ask_question"
+    print("Action: : ", action)
 
     # If a photo arrived while step == awaiting_photo_optional, run photo
     # diagnosis (handled in handle_message, not here). Here we only handle
@@ -529,7 +551,8 @@ async def _route_crop_detection_case(
         )
 
     # ask_question.
-    question = model_output.get("question") if isinstance(model_output, dict) else "Tell me more about the problem."
+    # 
+    question =model_output.get("question") if isinstance(model_output, dict) else "Tell me more about the problem."
     step = _step_for_question(model_output, case)
     case.step = step
     case.questions_asked = case.questions_asked + 1
@@ -571,33 +594,33 @@ async def _send_description_diagnosis(
     case.step = UserStep.AWAITING_PHOTO_OPTIONAL
     await storage.set_case(user.phone, case)
 
-    # Log the description diagnosis.
-    try:
-        await storage.log_diagnosis(
-            case_id=case.current_case_id,
-            wa_id=user.phone,
-            source="description",
-            model_name=TEXT_MODEL_NAME,
-            photo_ref=None,
-            raw_output=json.dumps(model_output),
-            crop=reply.parsed.get("crop", {}).get("name") if reply.parsed else None,
-            diagnosis_name=(reply.parsed or {}).get("diagnosis", {}).get("primary", {}).get("name")
-            if reply.parsed
-            else None,
-            category=(reply.parsed or {}).get("diagnosis", {}).get("primary", {}).get("category")
-            if reply.parsed
-            else None,
-            confidence=(reply.parsed or {}).get("diagnosis", {}).get("primary", {}).get("confidence")
-            if reply.parsed
-            else None,
-            flags=reply.flags,
-            reply_text_en=reply.text_en,
-        )
-    except Exception as error:
-        logger.warning("Could not log description diagnosis for %s: %s", user.phone, error)
+    # # Log the description diagnosis.
+    # try:
+    #     await storage.log_diagnosis(
+    #         case_id=case.current_case_id,
+    #         wa_id=user.phone,
+    #         source="description",
+    #         model_name=TEXT_MODEL_NAME,
+    #         photo_ref=None,
+    #         raw_output=json.dumps(model_output),
+    #         crop=reply.parsed.get("crop", {}).get("name") if reply.parsed else None,
+    #         diagnosis_name=(reply.parsed or {}).get("diagnosis", {}).get("primary", {}).get("name")
+    #         if reply.parsed
+    #         else None,
+    #         category=(reply.parsed or {}).get("diagnosis", {}).get("primary", {}).get("category")
+    #         if reply.parsed
+    #         else None,
+    #         confidence=(reply.parsed or {}).get("diagnosis", {}).get("primary", {}).get("confidence")
+    #         if reply.parsed
+    #         else None,
+    #         flags=reply.flags,
+    #         reply_text_en=reply.text_en,
+    #     )
+    # except Exception as error:
+    #     logger.warning("Could not log description diagnosis for %s: %s", user.phone, error)
 
     return RoutedReply(
-        messages=[_voice_payload(reply.text_en, user.language)],
+        messages=[_voice_payload(model_output["farmer_message"], user.language)],
         english_text=reply.text_en,
         close_case=False,
     )
@@ -635,17 +658,21 @@ async def _text_model_turn(user: User, case: OpenCase, english_text: str) -> dic
             logger.warning("Could not load conversation_memory for %s: %s", user.phone, error)
 
     context = _build_case_context(case, summary)
+    print(context)
     user_block = f"Farmer's latest message: {english_text}"
     system = TEXT_SYSTEM_PROMPT
     prompt = f"{context}\n\n{user_block}"
 
     try:
         raw = await _groq_chat(system, prompt, timeout=60.0)
-        data = _parse_text_model_output(raw)
-        if data is None:
+        print("raw: : ", raw)
+        # data = _parse_text_model_output(raw)
+        print("data::: ")
+        print("data: ", raw)
+        if raw is None:
             logger.warning("Text model returned unusable output for %s", user.phone)
             return {"action": "refer"}
-        return data
+        return parse_model_output(raw)
     except Exception as error:
         logger.warning("Text model call failed for %s: %s", user.phone, error)
         return {"action": "refer"}

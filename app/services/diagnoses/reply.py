@@ -99,15 +99,17 @@ def _build_fallback(data: dict[str, Any], name: str, confidence: str) -> str:
 def build_reply(raw: Any) -> Reply:
     """Build a safe farmer-facing reply from the model's raw output."""
     data = parse_model_output(raw)
+    print("Parse_Model_OUTPUT: ",  data)
     if data is None:
         return Reply("error", MSG["parse_error"], ["parse_failed"])
 
-    status = data.get("image_status")
+    status = data.get("image_status", "")
     quality = data.get("photo_quality") or {}
-    if status != "ok" or quality.get("usable") is False:
-        fallback = MSG["not_plant"] if status in ("not_a_plant", "no_crop_visible") else MSG["unclear"]
-        text = _clean(quality.get("retake_advice")) or fallback
-        return Reply("retake", text, [f"bad_photo:{status}"], data)
+    if status != "": 
+        if status != "ok" or quality.get("usable") is False:
+            fallback = MSG["not_plant"] if status in ("not_a_plant", "no_crop_visible") else MSG["unclear"]
+            text = _clean(quality.get("retake_advice")) or fallback
+            return Reply("retake", text, [f"bad_photo:{status}"], data)
 
     primary = (data.get("diagnosis") or {}).get("primary")
     if not isinstance(primary, dict):
