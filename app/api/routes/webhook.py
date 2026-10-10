@@ -1,8 +1,10 @@
 """WhatsApp webhook endpoints: verification and message delivery."""
 
 import logging
-from pyexpat.errors import messages
+import os
+from typing import Any
 
+from dotenv import load_dotenv
 from fastapi import (
     APIRouter,
     BackgroundTasks,
@@ -15,18 +17,26 @@ from fastapi.responses import PlainTextResponse
 
 from app.config import Settings, get_settings
 from app.core.security import verify_signature
+from app.onboarding.messages import (
+    GENERIC_ERROR_MESSAGE,
+    LANGUAGES,
+    STORAGE_FALLBACK_MESSAGE,
+    text_message,
+)
+from app.onboarding.onboarding_send import (
+    mark_seen,
+    safe_send_whatsapp,
+    send_voice_then_messages,
+    validate_message,
+    voice_script_for_step,
+)
+from app.onboarding.state_machine import OnboardingStateMachine
 from app.schemas.webhook import WebhookPayload
+from app.services.chat_history import record_inbound, record_outgoing
 from app.services.whatsapp.messages import handle_message
-from app.services.translation import translate_for_speech
-
-from app.schemas.memory import storage, User
-# from app.onboarding.state_machine import OnboardingStateMachine
 from app.services.whatsapp_onboarding import WhatsAppService
-from app.onboarding.messages import create_language_message, create_role_message
-from app.onboarding.messages import LANGUAGES, ROLES
-
-import os
-from dotenv import load_dotenv
+from app.storage import StorageUnavailableError, mask_phone, storage
+from app.voice.onboarding import VoiceOnboarding
 
 load_dotenv()
 
@@ -36,15 +46,18 @@ logger = logging.getLogger("webhook")
 router = APIRouter()
 
 
+onboarding = OnboardingStateMachine(storage)
 
-# onboarding = OnboardingStateMachine(storage)
+# The text state machine owns every state and stored value. The voice module
+# only resolves a voice note into an answer id, which is then handed to the
+# same handler (combined-onboarding-spec section 5, rule 4).
+voice_onboarding = VoiceOnboarding(storage)
 
 
 whatsapp = WhatsAppService(
     access_token=os.getenv("WHATSAPP_ACCESS_TOKEN"),
     phone_number_id=os.getenv("WHATSAPP_PHONE_NUMBER_ID"),
 )
-
 
 
 @router.get("/webhook", response_class=PlainTextResponse)
@@ -61,6 +74,24 @@ async def verify_webhook(
     raise HTTPException(status_code=403, detail="Verification failed")
 
 
+def _as_list(
+    reply: dict[str, Any] | list[dict[str, Any]] | None,
+) -> list[dict[str, Any]]:
+    """Normalize a state machine reply into a list of messages."""
+    if reply is None:
+        return []
+    if isinstance(reply, list):
+        return list(reply)
+    return [reply]
+
+
+async def _send_fallback(phone: str, body: str) -> None:
+    """Send one plain fallback message and never raise into the webhook."""
+    await safe_send_whatsapp(
+        whatsapp, phone, validate_message(text_message(body)), logger
+    )
+
+
 @router.post("/webhook")
 async def receive_webhook(
     request: Request,
@@ -69,7 +100,6 @@ async def receive_webhook(
 ) -> dict[str, str]:
     """Accept a webhook delivery, then process it out-of-band."""
     raw_body = await request.body()
-    print("Received webhook payload:", raw_body.decode("utf-8"))
 
     if not verify_signature(
         raw_body,
@@ -77,150 +107,144 @@ async def receive_webhook(
         settings.whatsapp_app_secret,
     ):
         raise HTTPException(status_code=403, detail="Invalid signature")
-    
+
     payload_json = await request.json()
     value = payload_json["entry"][0]["changes"][0]["value"]
 
     messages = value.get("messages")
     if not messages:
-        print("Webhook event has no incoming message. Ignoring it.")
+        logger.info("Webhook event has no incoming message. Ignoring it.")
         return {"status": "ignored"}
 
     message = messages[0]
-
     phone = message["from"]
-    user = storage.get_user(phone)
-    if user is None:
-    # This is a new user.
-        user = User(
-        phone=phone,
-        state="new",
-    )
+    name = value["contacts"][0]["profile"]["name"]
+    message_id = message.get("id")
+    is_audio = message.get("type") == "audio"
 
-        storage.save_user(user)
+    seen = await mark_seen(message_id, phone)
 
-        # Send language selection.
-        response = create_language_message(name=payload_json["entry"][0]["changes"][0]["value"]["contacts"][0]["profile"]["name"])
-
-        await whatsapp.send_message(
-        recipient=phone,
-        message=response,
-    )
-        
-        return {"status": "received"}
-    elif storage.get_state(phone) == "new" :
-        # Get the selected WhatsApp list option
-        interactive = message.get("interactive", {})
-        list_reply = interactive.get("list_reply")
-        user = storage.get_user(phone)
-
-        if list_reply:
-            selected_language_id = list_reply.get("id")
-
-            language = LANGUAGES.get(selected_language_id)
-            print("language selected", language)
-            if language:
-                user.language = language
-
-                # Move them to the next state.
-                user.state = "awaiting_consent"
-
-                storage.save_user(user)
-
-                print(
-                f"User {user.phone} selected {user.language}"
-            )
-            response = create_role_message(language=user.language)
-            translated_text, spitch_language_code = await translate_for_speech(
-                text=f"You selected {user.language}.",
-                language=user.language,
-            )
-            # For now, just confirm it worked.
-            await whatsapp.send_message(
-                recipient=phone,
-                message={
-                    "type": "text",
-                    "text": {
-                        "body": translated_text
-                    }
-                },
-            )
-            # For now, just confirm it worked.
-            await whatsapp.send_message(
-                recipient=phone,
-                message=response,
-            )
-
-            return {"status": "received"}
-    elif  storage.get_user(phone).role == None: 
-        # Get the selected WhatsApp button option
-        interactive = message.get("interactive", {})
-        button_reply = interactive.get("button_reply")
-        user = storage.get_user(phone)
-
-        if button_reply:
-            selected_role_id = button_reply.get("id")
-
-            if selected_role_id:
-                user.role = ROLES.get(selected_role_id)
-
-                # Move them to the next state.
-                user.state = "onboarding_complete"
-
-                storage.save_user(user)
-
-                print(
-                f"User {user.phone} selected role {user.role}"
-            )
-            translated_text, spitch_language_code = await translate_for_speech(
-                            text=f"You selected role as {user.role}. Ask any question?\n",
-                            language=user.language,
-                        )
-
-            # For now, just confirm it worked.
-            await whatsapp.send_message(
-                recipient=phone,
-                message={
-                    "type": "text",
-                    "text": {
-                        "body": translated_text
-                    }
-                },
-            )
-            translated_text_2, spitch_language_code = await translate_for_speech(
-                                        text=f"Do you have any questions to ask about your farmland?\n",
-                                        language=user.language,
-                                    )
-             # For now, just confirm it worked.
-            await whatsapp.send_message(
-                            recipient=phone,
-                            message={
-                                "type": "text",
-                                "text": {
-                                    "body": translated_text_2
-                                }
-                            },
-                        )
-
-            return {"status": "received"}
-
-
-
+    # Dedupe by WhatsApp message id so a Meta retry cannot send a voice note
+    # twice and cannot re-run onboarding for the same inbound message.
+    if not seen:
+        logger.info(
+            "Duplicate webhook message %s from %s; ignoring",
+            message_id,
+            mask_phone(phone),
+        )
+        return {"status": "received"} 
 
 
     
-    payload = WebhookPayload.model_validate(await request.json())
+    try:
+        user = await onboarding.get_or_create_user(phone, name)
+    except StorageUnavailableError as error:
+        logger.error("Storage unavailable for %s: %s", mask_phone(phone), error)
+        await _send_fallback(phone, STORAGE_FALLBACK_MESSAGE)
+        return {"status": "received"}
 
-    for entry in payload.entry:
-        for change in entry.changes:
-            value = change.value
-            contacts = {contact.wa_id: contact.profile.name for contact in value.contacts}
+    prev_state = user.state
+    
 
-            for message in value.messages:
-                name = contacts.get(message.from_)
-                background_tasks.add_task(handle_message, message, name)
+    # Track the onboarding message (text or a button/list reply), but only if
+    # the user has consented. Runs after the 200, and a storage failure only
+    # logs. An active user's messages are recorded by the main pipeline.
+    if prev_state != "active":
+        background_tasks.add_task(
+            record_inbound, phone, message, wa_message_id=message_id
+        )
 
-            # delivery/read receipts arrive under value["statuses"]; ignored here
+    # Resolve the inbound message into an answer id the text state machine
+    # understands. A voice note is resolved by the voice module; text and
+    # button taps are normalized by the state machine itself.
+    answer: str | None = None
+    prefix: list[dict[str, Any]] = []
+    voice_override: str | None = None
+    send_direct = False
+    try:
+        if is_audio:
+            resolution = await voice_onboarding.resolve_audio(user, message)
+            answer = resolution.answer
+            prefix = list(resolution.prefix_messages)
+            # A voice step may name its own script (for example a replay).
+            voice_override = resolution.voice_script_id
+            # With no answer id the voice note produced its own messages (a
+            # retry prompt, the unsupported notice, or a replayed step) or
+            # nothing at all; never run the text handler with a None answer.
+            send_direct = answer is None
+        else:
+            answer = onboarding.normalize_input(message)
 
-    # Respond 200 fast, otherwise Meta retries the delivery
+        if send_direct:
+            response = prefix
+        else:
+            if is_audio:
+                inbound: dict[str, Any] = {
+                    "type": "interactive",
+                    "interactive": {"button_reply": {"id": answer}},
+                }
+            else:
+                inbound = message
+            reply = await onboarding.process(phone, inbound, name)
+            if reply is not None: 
+                response = prefix + _as_list(reply)
+            else: 
+                print("We are here")
+                response = None
+    except StorageUnavailableError as error:
+        logger.error("Storage unavailable for %s: %s", mask_phone(phone), error)
+        await _send_fallback(phone, STORAGE_FALLBACK_MESSAGE)
+        return {"status": "received"}
+    except Exception as error:  # noqa: BLE001 - a failure must not become a 500
+        logger.exception("Onboarding failed for %s: %s", mask_phone(phone), error)
+        await _send_fallback(phone, GENERIC_ERROR_MESSAGE)
+        return {"status": "received"}
+
+    if response:
+        # Voice note first, then the text / interactive messages. The helper
+        # awaits the voice send and never lets it block the text path.
+
+        language = LANGUAGES.get(answer) or user.language
+        script_id = voice_override or voice_script_for_step(prev_state, answer)
+        await send_voice_then_messages(
+            whatsapp,
+            phone,
+            script_id,
+            response,
+            logger,
+            language=language,
+        )
+        # Track the outgoing reply (and the voice script) after the 200, only
+        # if the user has consented.
+        background_tasks.add_task(
+            record_outgoing,
+            phone,
+            response,
+            script_id=script_id,
+            language=language,
+        )
+        return {"status": "received"}
+
+    # An active user's ordinary message has no onboarding reply; hand it to the
+    # main AjaTrade pipeline in the background.
+    print("We are not here")
+    print("user_onboarding", user.onboarding)
+    print(type(user.onboarding))
+    if bool(user.onboarding) == True:
+        logger.info("Onboarding Complete")
+        payload = WebhookPayload.model_validate(payload_json)
+        for entry in payload.entry:
+            for change in entry.changes:
+                change_value = change.value
+                contacts = {
+                    contact.wa_id: contact.profile.name
+                    for contact in change_value.contacts
+                }
+                for msg in change_value.messages:
+                    background_tasks.add_task(
+                        handle_message, msg, contacts.get(msg.from_)
+                    )
+        return {"status": "received"}
+
+    # A voice step that intentionally sends nothing (replays exhausted).
     return {"status": "received"}

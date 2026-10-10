@@ -12,7 +12,7 @@ VOICES = {
     "english": ("en",  "lina"),
     "hausa":   ("ha",  "amina"),
     "igbo":    ("ig",  "ngozi"),
-    "pidgin":  ("pcm", "boma"),
+    "pidgin":  ("ng", "boma"),  # REVIEW: confirm 'ng' is the right Spitch code for Nigerian Pidgin
 }
 
 async def text_to_speech(text: str, language: str) -> bytes | None:

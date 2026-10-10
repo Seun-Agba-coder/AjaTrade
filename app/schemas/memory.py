@@ -1,33 +1,41 @@
-from dataclasses import dataclass
-from typing import Optional
+"""User model.
+
+Persistence now lives in :mod:`app.storage`; this module only holds the shape
+of a user, matching the ``users`` table columns (SPEC.md section 3, and the
+case-state fields from VOICE_NOTE.md section 5).
+"""
+
+from dataclasses import dataclass, field
+from datetime import datetime
+from uuid import UUID
 
 
 @dataclass
 class User:
     phone: str
+    name: str | None = None
+    preferred_name: str | None = None
     state: str = "new"
     language: str | None = None
+    language_source: str | None = None
+    language_attempts: int = 0
     role: str | None = None
+    onboarding: bool = False
+    consent_status: str = "pending"
+    consent_at: datetime | None = None
+    consent_version: str | None = None
+    created_at: datetime | None = None
+    last_seen_at: datetime | None = None
 
+    # ---- crop-diagnosis case state (VOICE_NOTE.md section 5) ----
 
-class InMemoryStorage:
-    def __init__(self):
-        # All users will be stored here while the server is running.
-        # WARNING: all data is lost when the application restarts.
-        self.users = {}
-
-    def get_user(self, phone: str) -> Optional[User]:
-        return self.users.get(phone)
-
-    def save_user(self, user: User):
-        self.users[user.phone] = user
-    def get_state(self, phone: str):
-            user = self.get_user(phone)
-            return user.state if user else None
-
-    def get_role(self, phone: str):
-            user = self.get_user(phone)
-            return user.role if user else None
-
-
-storage = InMemoryStorage()
+    flow: str | None = None
+    step: str | None = None
+    current_case_id: UUID | None = None
+    case_started_at: datetime | None = None
+    last_activity_at: datetime | None = None
+    case_crop: str | None = None
+    case_part: str | None = None
+    case_symptoms: list[str] = field(default_factory=list)
+    questions_asked: int = 0
+    diagnoses_in_case: int = 0
