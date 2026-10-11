@@ -359,7 +359,12 @@ WELCOME_BACK_TEXT = {
     "ig": "Nnọọ na-ezukọrịta gị. AjaTrade bụ enyi noma gị. Kedu ka anyị ga-esi nyere gị aka taa?",
     "pcm": "Welcome back. AjaTrade na your farming helper. How I fit help you today?",
 }
-
+UNCLEAR_TEXT_SWITCH_TO_MENU= {
+  "hausa": "Muna gudanar da aikin gano cututtukan amfanin gona, duba farashin kasuwa, da neman mai siyarwa kawai. Danna 1 domin gano cutar amfanin gonarka, 2 domin duba farashin kaya a kasuwa, da 3 domin neman mai siyar da maganin ciyawa ko taki.",
+  "pidgin": "Na only crop sickness detection, checking of market price, and finding vendor we dey do. Click 1 make you diagnose your crop, 2 to check market price for market items, and 3 to find vendor for herbicide or fertilizer.",
+  "igbo": "Sọọsọ ịchọpụta ọrịa ihe ubi, lelee ọnụahịa ahịa, na ịchọtara gị onye na-ere ihe ka anyị na-eme. Pịa 1 ka ị nyochaa ihe ubi gị, 2 ka ị lelee ọnụahịa ahịa, na 3 ka ị chọta onye na-ere ọgwụ ahịhịa ma ọ bụ fatịlaịza.",
+  "yoruba": "A n ṣe awari arun ti o n ṣe gbogbo ogbin, yẹyẹ iye owo ọja, ati wiwa onibara nikan. Tẹ 1 lati yẹ ogbin rẹ wo, 2 lati yẹ iye owo ọja wo, ati 3 lati wa onibara ti o n ta oogun ewe tabi taki."
+}
 
 def welcome_back_text(language: str) -> str:
     lang = (language or "en").strip().lower()
@@ -434,15 +439,14 @@ async def route_message(user: User, english_text: str, media_ref: str | None = N
 
     if intent == "unclear":
         return RoutedReply(
-        messages=[_voice_payload("We only deal with crop detection, checking of market prices and finding a vendor," \
-        " click one to diagnose your crip, two to check market price for goods, and three to find a vendor for(Herbicide or fertilizer)", user.language), service_menu(user.language) ],
+        messages=[_voice_payload(UNCLEAR_TEXT_SWITCH_TO_MENU[user.language], user.language), service_menu(user.language) ],
         english_text="We only deal with crop detection, checking of market prices and finding a vendor," \
         " click one to diagnose your crip, two to check market price for goods, and three to find a vendor for(Herbicide or fertilizer)",
         close_case=False,
     )
-
-    # greeting or unclear -> welcome-back + menu.
-    return _welcome_back_and_menu(user)
+    if intent == "greeting": 
+       
+        return _welcome_back_and_menu(user)
 
 
 def _case_expired(case: OpenCase) -> bool:
