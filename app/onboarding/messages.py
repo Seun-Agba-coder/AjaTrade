@@ -2,7 +2,7 @@ LANGUAGES = {
     "lang_ha": "hausa",
     "lang_yo": "yoruba",
     "lang_ig": "igbo",
-    "lang_pcm": "nigerian pidgin",
+    "lang_pcm": "pidgin",
     "lang_en": "english",
 }
 DEFAULT_LANGUAGE = "english"
@@ -201,8 +201,7 @@ CONSENT_MESSAGES = {
         "foto ihe ọkụkụ, ebe ị nọ, na ajụjụ gị. "
         "Anyị na-eji ozi ndị a enye ndụmọdụ gbasara ọrụ ugbo na azụmahịa.\n\n"
         "Ị kwenyere?"
-    ),
-
+    ), 
     "pidgin": (
         "Before we continue, we need your consent.\n\n"
         "We fit collect your phone number, voice notes, crop photos, "
@@ -228,7 +227,7 @@ CONSENST_BUTTONS = {
         "Gụọ karia",
         "Anekwala okwu m"
     ], 
-    "hausa  ": [
+    "hausa": [
         "Na yarda", 
         "Karanta sauran", 
         "Kada ka adana tattaunawa ta"
@@ -295,14 +294,15 @@ def consent_message(language: str = "english") -> dict:
                         "type": "reply",
                         "reply": {"id": "consent_yes", "title": labels[0]},
                     },
-                    {
-                        "type": "reply",
-                        "reply": {"id": "consent_read_more", "title": labels[1]},
-                    },
-                    {
+                     {
                         "type": "reply",
                         "reply": {"id": "consent_no", "title": labels[2]},
                     },
+                    {
+                        "type": "reply",
+                        "reply": {"id": "consent_read_more", "title": labels[1]},
+                    }
+                   
                 ]
             },
         },
@@ -377,69 +377,143 @@ def text_message(text: str) -> dict:
     }
 
 
+# SERVICE_MENU_MESSAGES =  {
+#     "english": {
+#       "greeting": "Hello {name}, I am AjaTrade. How can I help you today?",
+#       "greeting_no_name": "Hello, I am AjaTrade. How can I help you today?",
+#       "button": "See options",
+#       "section": "Services",
+#       "rows": [
+#         ["crop_detection", "Diagnose crop problem", "Send a photo or voice note"],
+#         ["market_price", "Check market price", "Get today's market price"],
+#         ["connect_vendor", "Find a vendor", "Herbicide or fertilizer vendor"],
+       
+#       ]
+#     },
+#     "hausa": {
+#       "greeting": "Sannu {name}, ni ne AjaTrade. Yaya zan iya taimaka muku a yau?",
+#       "greeting_no_name": "Sannu, ni ne AjaTrade. Yaya zan iya taimaka muku a yau?",
+#       "button": "Duba zabi",
+#       "section": "Ayyuka",
+#       "rows": [
+#         ["crop_detection", "Gano matsalar shuka", "Aika hoto ko saƙon murya"],
+#         ["market_price", "Duba farashin kasuwa", "Samu farashin yau"],
+#         ["connect_vendor", "Nemo dillali", "Mai magani ko taki"],
+
+#       ]
+#     },
+#     "igbo": {
+#       "greeting": "Ndewo {name}, abụ m AjaTrade. Kedu ka m ga-esi nyere gị aka taa?",
+#       "greeting_no_name": "Ndewo, abụ m AjaTrade. Kedu ka m ga-esi nyere gị aka taa?",
+#       "button": "Hụ nhọrọ",
+#       "section": "Ọrụ anyị",
+#       "rows": [
+#         ["crop_detection", "Chọpụta nsogbu akụkụ", "Zite foto ma ọ bụ olu"],
+#         ["market_price", "Lelee ọnụ ahịa ahịa", "Nweta ọnụ ahịa taa"],
+#         ["connect_vendor", "Chọta onye na-ere", "Onye na-ere ọgwụ/nri osisi"],
+      
+#       ]
+#     },
+#     "pidgin": {
+#       "greeting": "Hello {name}, I be AjaTrade. How I fit help you today?",
+#       "greeting_no_name": "Hello, I be AjaTrade. How I fit help you today?",
+#       "button": "Check options",
+#       "section": "Our Services",
+#       "rows": [
+#         ["crop_detection", "Check crop problem", "Send picture or voice note"],
+#         ["market_price", "Check market price", "Get today market price"],
+#         ["connect_vendor", "Find vendor", "Find herbicide or fertilizer"],
+
+#       ]
+#     },
+#     "yoruba": {
+#       "greeting": "Pẹlẹ o {name}, emi ni AjaTrade. Bawo ni mo ṣe le ràn ọ́ lọ́wọ́ lónìí?",
+#       "greeting_no_name": "Pẹlẹ o, emi ni AjaTrade. Bawo ni mo ṣe le ràn ọ́ lọ́wọ́ lónìí?",
+#       "button": "Wo àwọn aṣàyàn",
+#       "section": "Àwọn Iṣẹ́",
+#       "rows": [
+#         ["crop_detection", "Yẹ ìṣòro irúgbìn wò", "Fi àwòrán tàbí ohùn ránṣẹ́"],
+#         ["market_price", "Wo iye ọjà", "Gba iye ọjà t'òní"],
+#         ["connect_vendor", "Wá olùtà", "Olùtà egbògi tàbí ajílẹ̀"],
+
+#       ]
+#     }
+#   }
+
+# def service_menu(language: str = "english", name: str | None = None) -> dict:
+#     msgs = SERVICE_MENU_MESSAGES.get(language, SERVICE_MENU_MESSAGES["english"])
+#     body = (
+#         msgs["greeting"].format(name=name)
+#         if name
+#         else msgs["greeting_no_name"]
+#     )
+#     return {
+#         "type": "interactive",
+#         "interactive": {
+#             "type": "list",
+#             "body": {"text": body},
+#             "action": {
+#                 "button": msgs["button"],
+#                 "sections": [
+#                     {
+#                         "title": msgs["section"],
+#                         "rows": [
+#                             {"id": rid, "title": title, "description": desc}
+#                             for rid, title, desc in msgs["rows"]
+#                         ],                 
+#                     }
+#                 ],
+#             },
+#         },
+#     }
+
+
+
 SERVICE_MENU_MESSAGES =  {
     "english": {
       "greeting": "Hello {name}, I am AjaTrade. How can I help you today?",
-      "greeting_no_name": "Hello, I am AjaTrade. How can I help you today?",
-      "button": "See options",
-      "section": "Services",
-      "rows": [
-        ["crop_detection", "Diagnose crop problem", "Send a photo or voice note"],
-        ["market_price", "Check market price", "Get today's market price"],
-        ["connect_vendor", "Find a vendor", "Herbicide or fertilizer vendor"],
-       
-      ]
+      "greeting_no_name": "Hello, I am AjaTrade. How can I help you today?"
     },
     "hausa": {
       "greeting": "Sannu {name}, ni ne AjaTrade. Yaya zan iya taimaka muku a yau?",
       "greeting_no_name": "Sannu, ni ne AjaTrade. Yaya zan iya taimaka muku a yau?",
-      "button": "Duba zabi",
-      "section": "Ayyuka",
-      "rows": [
-        ["crop_detection", "Gano matsalar shuka", "Aika hoto ko saƙon murya"],
-        ["market_price", "Duba farashin kasuwa", "Samu farashin yau"],
-        ["connect_vendor", "Nemo dillali", "Mai magani ko taki"],
-
-      ]
     },
     "igbo": {
       "greeting": "Ndewo {name}, abụ m AjaTrade. Kedu ka m ga-esi nyere gị aka taa?",
       "greeting_no_name": "Ndewo, abụ m AjaTrade. Kedu ka m ga-esi nyere gị aka taa?",
-      "button": "Hụ nhọrọ",
-      "section": "Ọrụ anyị",
-      "rows": [
-        ["crop_detection", "Chọpụta nsogbu akụkụ", "Zite foto ma ọ bụ olu"],
-        ["market_price", "Lelee ọnụ ahịa ahịa", "Nweta ọnụ ahịa taa"],
-        ["connect_vendor", "Chọta onye na-ere", "Onye na-ere ọgwụ/nri osisi"],
-      
-      ]
     },
     "pidgin": {
       "greeting": "Hello {name}, I be AjaTrade. How I fit help you today?",
       "greeting_no_name": "Hello, I be AjaTrade. How I fit help you today?",
-      "button": "Check options",
-      "section": "Our Services",
-      "rows": [
-        ["crop_detection", "Check crop problem", "Send picture or voice note"],
-        ["market_price", "Check market price", "Get today market price"],
-        ["connect_vendor", "Find vendor", "Find herbicide or fertilizer"],
-
-      ]
     },
     "yoruba": {
       "greeting": "Pẹlẹ o {name}, emi ni AjaTrade. Bawo ni mo ṣe le ràn ọ́ lọ́wọ́ lónìí?",
       "greeting_no_name": "Pẹlẹ o, emi ni AjaTrade. Bawo ni mo ṣe le ràn ọ́ lọ́wọ́ lónìí?",
-      "button": "Wo àwọn aṣàyàn",
-      "section": "Àwọn Iṣẹ́",
-      "rows": [
-        ["crop_detection", "Yẹ ìṣòro irúgbìn wò", "Fi àwòrán tàbí ohùn ránṣẹ́"],
-        ["market_price", "Wo iye ọjà", "Gba iye ọjà t'òní"],
-        ["connect_vendor", "Wá olùtà", "Olùtà egbògi tàbí ajílẹ̀"],
-        ["connect_person", "Bá ènìyàn sọ̀rọ̀", "Bá ènìyàn gidi sọ̀rọ̀"]
-      ]
     }
   }
 
+
+service_menu_buttons = {
+    "english": [
+        "1.",
+        "2. ",
+        "3."
+    ], 
+    "youruba": [
+        "1.",
+        "2.",
+        "3"
+    ], 
+    "igbo": [
+        "1", "2", "3."
+    ], 
+    "hausa":[
+        "1", "2", "3"
+    ], 
+    "pidgin": {
+        "1", "2", "3"
+    }
+}
 def service_menu(language: str = "english", name: str | None = None) -> dict:
     msgs = SERVICE_MENU_MESSAGES.get(language, SERVICE_MENU_MESSAGES["english"])
     body = (
@@ -448,23 +522,52 @@ def service_menu(language: str = "english", name: str | None = None) -> dict:
         else msgs["greeting_no_name"]
     )
     return {
+           "type": "interactive",
+           "interactive": {
+               "type": "button",
+               "body": {"text": body},
+               "action": {
+                   "buttons": [
+                       {
+                           "type": "reply",
+                           "reply": {"id": "crop_detection", "title": service_menu.get(language, "english")[0]},
+                       },
+                        {
+                           "type": "reply",
+                           "reply": {"id": "market_price", "title": service_menu.get(language, "english")[1]},
+                       },
+                       {
+                           "type": "reply",
+                           "reply": {"id": "connect_vendor", "title": service_menu.get(language, "english")[2]},
+                       }
+                      
+                   ]
+               },
+           },
+       }
+
+
+    return {
         "type": "interactive",
         "interactive": {
-            "type": "list",
-            "body": {"text": body},
+            "type": "button",
+            "body": {"text": short},
             "action": {
-                "button": msgs["button"],
-                "sections": [
+                "buttons": [
                     {
-                        "title": msgs["section"],
-                        "rows": [
-                            {"id": rid, "title": title, "description": desc}
-                            for rid, title, desc in msgs["rows"]
-                        ],                 
+                        "type": "reply",
+                        "reply": {"id": "consent_yes", "title": labels[0]},
+                    },
+                     {
+                        "type": "reply",
+                        "reply": {"id": "consent_no", "title": labels[2]},
+                    },
+                    {
+                        "type": "reply",
+                        "reply": {"id": "consent_read_more", "title": labels[1]},
                     }
-                ],
+                   
+                ]
             },
         },
     }
-
-

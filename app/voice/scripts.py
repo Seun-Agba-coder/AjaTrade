@@ -109,11 +109,11 @@ ROLE_ASK = {
   }
 
 SERVICE_MENU_PROMPT = {
-    "english": "Hello, I am AjaTrade. How can I help you today? Press 1 to diagnose a crop problem, press 2 to check today's market prices, press 3 to find a fertilizer or herbicide vendor, or press 4 to speak with a real person.",
-    "hausa": "Sannu, ni ne AjaTrade. Yaya zan iya taimaka muku a yau? Danna ɗaya don gano matsalar shuka, danna biyu don duba farashin kasuwa na yau, danna uku don nemo dillalin taki ko maganin ciyawa, ko ka danna hudu don yi magana da ma'aikaci.",
-    "igbo": "Ndewo, abụ m AjaTrade. Kedu ka m ga-esi nyere gị aka taa? Pịa otu iji chọpụta nsogbu akụkụ gị, pịa abụọ iji lelee ọnụ ahịa ahịa taa, pịa atọ iji chọta onye na-ere ọgwụ ma ọ bụ nri osisi, ma ọ bụ pịa anọ iji gwa ezigbo mmadụ okwu.",
-    "pidgin": "Hello, I be AjaTrade. How I fit help you today? Press 1 to check crop problem, press 2 to check today market price, press 3 to find fertilizer or herbicide vendor, or press 4 to talk to real person.",
-    "yoruba": "Pẹlẹ o, emi ni AjaTrade. Bawo ni mo ṣe le ràn ọ́ lọ́wọ́ lónìí? Tẹ ọkan fún pípèṣè ìṣòro irúgbìn wò, tẹ èjì fún wíwò iye ọjà t'òní, tẹ ẹ̀ta fún wíwá olùtà ajílẹ̀ tàbí egbògi, tàbí tẹ ẹ̀rin fún bíbá ènìyàn gidi sọ̀rọ̀."
+    "english": "Hello, I am AjaTrade. How can I help you today? Press 1 to diagnose a crop problem, press 2 to check today's market prices, press 3 to find a fertilizer or herbicide vendor.",
+    "hausa": "Sannu, ni ne AjaTrade. Yaya zan iya taimaka muku a yau? Danna ɗaya don gano matsalar shuka, danna biyu don duba farashin kasuwa na yau, danna uku don nemo dillalin taki ko maganin ciyawa.",
+    "igbo": "Ndewo, abụ m AjaTrade. Kedu ka m ga-esi nyere gị aka taa? Pịa otu iji chọpụta nsogbu akụkụ gị, pịa abụọ iji lelee ọnụ ahịa ahịa taa, pịa atọ iji chọta onye na-ere ọgwụ ma ọ bụ nri osisi.",
+    "pidgin": "Hello, I be AjaTrade. How I fit help you today? Press 1 to check crop problem, press 2 to check today market price, press 3 to find fertilizer or herbicide vendor.",
+    "yoruba": "Pẹlẹ o, emi ni AjaTrade. Bawo ni mo ṣe le ràn ọ́ lọ́wọ́ lónìí? Tẹ ọkan fún pípèṣè ìṣòro irúgbìn wò, tẹ èjì fún wíwò iye ọjà t'òní, tẹ ẹ̀ta fún wíwá olùtà ajílẹ̀ tàbí egbògi."
   }
  
 # Menu option 1 (crop diagnosis): sent when the user picks it from the service
